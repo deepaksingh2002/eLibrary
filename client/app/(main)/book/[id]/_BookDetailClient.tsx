@@ -435,6 +435,7 @@ export default function BookDetailClient() {
         <AIExplanationModal
           bookId={showAIExplanation ? id : null}
           bookTitle={book.title}
+          mode="summary"
           onClose={() => setShowAIExplanation(false)}
         />
       )}

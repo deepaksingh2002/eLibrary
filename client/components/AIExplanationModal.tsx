@@ -8,12 +8,14 @@ interface AIExplanationModalProps {
   bookId: string | null;
   bookTitle: string;
   onClose: () => void;
+  mode?: "explanation" | "summary";
 }
 
 export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
   bookId,
   bookTitle,
-  onClose
+  onClose,
+  mode = "explanation",
 }) => {
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -21,55 +23,49 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
     setIsHydrated(true);
   }, []);
 
+  const isSummary = mode === "summary";
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["explanation", bookId],
+    queryKey: [isSummary ? "book-summary" : "explanation", bookId],
     queryFn: async () => {
       if (!bookId) throw new Error("Book ID is required");
-      console.log(`[AIExplanation] Fetching explanation for book: ${bookId}`);
-      try {
-        const response = await api.get(`/api/recommendations/${bookId}/explain`);
-        console.log(`[AIExplanation] Success:`, response.data);
-        return response.data;
-      } catch (err) {
-        console.error("[AIExplanation] Failed to fetch explanation:", err);
-        throw err;
-      }
+      const url = isSummary
+        ? `/api/books/${bookId}/summary`
+        : `/api/recommendations/${bookId}/explain`;
+      return api.get(url).then((response) => response.data);
     },
     enabled: isHydrated && !!bookId,
-    staleTime: 1000 * 60 * 60,
+    staleTime: isSummary ? 1000 * 60 * 30 : 1000 * 60 * 60,
     retry: 0,
   });
 
   if (!bookId) return null;
 
-  const handleClose = () => {
-    console.log("[AIExplanation] Modal closed");
-    onClose();
-  };
-
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-      onClick={handleClose}
+      onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="ai-modal-title"
     >
-      <div 
+      <div
         className="bg-white rounded-2xl p-6 max-w-2xl w-full mx-auto max-h-[80vh] overflow-y-auto shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h2 id="ai-modal-title" className="font-bold text-xl text-gray-900">✨ Why this book?</h2>
+            <h2 id="ai-modal-title" className="font-bold text-xl text-gray-900">
+              {isSummary ? "AI PDF Summary" : "Why this book?"}
+            </h2>
             <p className="text-sm text-gray-400 line-clamp-2 mt-1">for {bookTitle}</p>
           </div>
-          <button 
-            onClick={handleClose}
+          <button
+            onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors text-2xl font-bold leading-none"
             aria-label="Close modal"
           >
-            ×
+            x
           </button>
         </div>
 
@@ -77,20 +73,26 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
           {isLoading ? (
             <div className="space-y-3">
               <div className="animate-pulse space-y-2">
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-full"></div>
-                <div className="h-4 bg-gray-200 rounded w-5/6"></div>
-                <div className="h-4 bg-gray-200 rounded w-4/5"></div>
+                <div className="h-4 bg-gray-200 rounded w-3/4" />
+                <div className="h-4 bg-gray-200 rounded w-full" />
+                <div className="h-4 bg-gray-200 rounded w-5/6" />
+                <div className="h-4 bg-gray-200 rounded w-4/5" />
               </div>
-              <p className="text-xs text-gray-400 mt-4 animate-pulse">🤖 AI is analyzing your reading preferences...</p>
+              <p className="text-xs text-gray-400 mt-4 animate-pulse">
+                {isSummary
+                  ? "AI is reading the PDF and preparing a summary..."
+                  : "AI is analyzing your reading preferences..."}
+              </p>
             </div>
           ) : isError ? (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
               <p className="text-gray-700 text-sm leading-relaxed font-medium mb-2">
-                📚 Could not generate AI explanation
+                Could not generate AI content
               </p>
               <p className="text-gray-600 text-sm">
-                But this book is recommended based on your reading preferences and ratings.
+                {isSummary
+                  ? "The PDF summary needs access to the PDF and available Gemini API quota."
+                  : "But this book is still recommended based on your reading preferences and ratings."}
               </p>
               {error && (
                 <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-amber-200">
@@ -98,34 +100,45 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
                 </p>
               )}
             </div>
-          ) : data?.explanation ? (
+          ) : data?.summary || data?.explanation ? (
             <div>
-              <p className="text-gray-800 text-base leading-relaxed mb-4 font-medium">
-                {data.explanation}
+              <p className="text-gray-800 text-base leading-relaxed mb-4 whitespace-pre-line">
+                {data.summary || data.explanation}
               </p>
-              
+
+              {Array.isArray(data.keyPoints) && data.keyPoints.length > 0 && (
+                <ul className="space-y-2 mb-4">
+                  {data.keyPoints.map((point: string, index: number) => (
+                    <li key={`${point}-${index}`} className="flex gap-2 text-sm text-gray-700">
+                      <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-500" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
               <div className="mt-4 flex items-center gap-2 flex-wrap">
                 {data.isAIGenerated ? (
                   <span className="text-xs text-purple-600 flex items-center gap-1 bg-purple-50 px-3 py-1.5 rounded-full border border-purple-200">
-                    ✨ Generated by Gemini AI
+                    Generated by Gemini AI
                   </span>
                 ) : (
                   <span className="text-xs text-blue-600 flex items-center gap-1 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-200">
-                    📊 Based on your reading patterns
+                    {isSummary ? "Fallback summary" : "Based on your reading patterns"}
                   </span>
                 )}
               </div>
             </div>
           ) : (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
-              <p className="text-gray-600 text-sm">No explanation available</p>
+              <p className="text-gray-600 text-sm">No AI content available</p>
             </div>
           )}
         </div>
 
         <div className="flex gap-3 mt-6 pt-4 border-t border-gray-200">
           <button
-            onClick={handleClose}
+            onClick={onClose}
             className="flex-1 px-4 py-2.5 text-gray-700 font-medium border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
           >
             Close
@@ -134,7 +147,7 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
             href={`/book/${bookId}`}
             className="flex-1 bg-blue-600 text-white font-medium py-2.5 rounded-xl hover:bg-blue-700 transition-colors text-center"
           >
-            View Book →
+            View Book
           </a>
         </div>
       </div>

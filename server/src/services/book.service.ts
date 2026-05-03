@@ -3,6 +3,7 @@ import Book, { IBook } from "../models/Book";
 import { UserActivity } from "../models/UserActivity";
 import { deleteFromCloudinary, generateSignedUrl, uploadBufferToCloudinary } from "../config/cloudinary";
 import { ApiError } from "../utils/ApiError";
+import { summarizePdfBook } from "./claudeService";
 
 type AuthUser = {
   id: string;
@@ -529,4 +530,34 @@ export async function downloadBook(id: string, user: AuthUser) {
     console.error(`[Download] Unexpected error for book ${id}:`, message);
     throw new ApiError(500, "Failed to process download request");
   }
+}
+
+export async function summarizeBook(id: string) {
+  const book = await Book.findOne({
+    _id: id,
+    isDeleted: false,
+    status: "published"
+  }).lean();
+
+  if (!book) {
+    throw new ApiError(404, "Book not found");
+  }
+
+  const pdfUrl = book.pdfPublicId ? generateSignedUrl(book.pdfPublicId) : book.pdfUrl;
+
+  const summary = await summarizePdfBook({
+    title: book.title,
+    author: book.author,
+    genre: book.genre,
+    description: book.description,
+    tags: book.tags,
+    pdfUrl
+  });
+
+  return {
+    bookId: book._id,
+    title: book.title,
+    provider: "gemini",
+    ...summary
+  };
 }

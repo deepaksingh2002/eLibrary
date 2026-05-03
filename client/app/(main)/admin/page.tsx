@@ -10,10 +10,11 @@ import {
 import api from "../../../lib/api";
 import { KPIStats, TrendPoint, GenreDistributionItem, GrowthPoint, AdminBook } from "../../../types";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+import { toast } from "../../../components/ui/Toast";
 
 export default function AdminDashboardPage() {
+  const [exporting, setExporting] = useState<"books" | "users" | null>(null);
+
   const { data: kpis, isLoading: kpisLoading } = useQuery<KPIStats>({
     queryKey: ["admin-kpis"],
     queryFn: () => api.get("/api/admin/stats/kpis").then(r => r.data),
@@ -50,6 +51,38 @@ export default function AdminDashboardPage() {
     "#059669", "#0891B2", "#DB2777", "#65A30D"
   ];
 
+  const downloadCsv = async (type: "books" | "users") => {
+    setExporting(type);
+    try {
+      const response = await api.get(`/api/admin/export/${type}?format=csv`, {
+        responseType: "blob",
+      });
+
+      const contentDisposition = response.headers["content-disposition"];
+      const filenameMatch = /filename="?([^"]+)"?/i.exec(contentDisposition || "");
+      const fallbackName = `elibrary-${type}-${new Date().toISOString().slice(0, 10)}.csv`;
+      const filename = filenameMatch?.[1] || fallbackName;
+
+      const blob = new Blob([response.data], { type: "text/csv;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`${type === "books" ? "Books" : "Users"} CSV exported`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "CSV export failed";
+      toast.error(message);
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <ProtectedRoute requiredRole="admin">
       <div>
@@ -61,16 +94,18 @@ export default function AdminDashboardPage() {
         
         <div className="flex items-center gap-3">
           <button 
-            onClick={() => window.open(`${API_URL}/api/admin/export/books?format=csv`, "_blank", "noopener,noreferrer")}
-            className="text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-4 py-2 rounded-xl transition-colors"
+            onClick={() => downloadCsv("books")}
+            disabled={exporting !== null}
+            className="text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-xl transition-colors"
           >
-            Export Books CSV
+            {exporting === "books" ? "Exporting..." : "Export Books CSV"}
           </button>
           <button 
-            onClick={() => window.open(`${API_URL}/api/admin/export/users?format=csv`, "_blank", "noopener,noreferrer")}
-            className="text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-4 py-2 rounded-xl transition-colors"
+            onClick={() => downloadCsv("users")}
+            disabled={exporting !== null}
+            className="text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-xl transition-colors"
           >
-            Export Users CSV
+            {exporting === "users" ? "Exporting..." : "Export Users CSV"}
           </button>
         </div>
       </div>

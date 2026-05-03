@@ -9,6 +9,7 @@ import {
   getBookById,
   permanentDeleteBook,
   searchBooks,
+  summarizeBook,
   toggleBookStatus,
   updateBook
 } from "../controllers/book.controller";
@@ -23,6 +24,7 @@ router.get("/autocomplete", optionalAuth, autocompleteBooks);
 router.get("/", optionalAuth, getAllBooks);
 router.get("/:id", optionalAuth, getBookById);
 
+router.get("/:id/summary", protect, summarizeBook);
 router.post("/:id/download", protect, downloadBook);
 
 router.post("/", protect, requireRole("admin"), uploadBookFiles, createBook);

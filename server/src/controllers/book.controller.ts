@@ -10,6 +10,7 @@ import {
   hardDeleteBook,
   listBooks,
   searchBooks as searchBooksService,
+  summarizeBook as summarizeBookService,
   softDeleteBook,
   toggleBookStatus as toggleBookStatusService,
   updateBook as updateBookService
@@ -115,4 +116,17 @@ export const downloadBook = asyncHandler(async (req: Request, res: Response) => 
     console.error(`[BookController] Download error:`, message);
     throw error;
   }
+});
+
+export const summarizeBook = asyncHandler(async (req: Request, res: Response) => {
+  if (!isValidId(req.params.id)) {
+    throw new ApiError(400, "Invalid book ID");
+  }
+
+  if (!req.user) {
+    throw new ApiError(401, "Authentication required");
+  }
+
+  const data = await summarizeBookService(req.params.id);
+  res.status(200).json(data);
 });

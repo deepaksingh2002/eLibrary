@@ -448,9 +448,9 @@ router.get("/export/books", asyncHandler(async (req, res) => {
     csvRows.push(row.join(","));
   }
 
-  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="elibrary-books-${new Date().toISOString().slice(0, 10)}.csv"`);
-  res.status(200).send(csvRows.join("\n"));
+  res.status(200).send(`\uFEFF${csvRows.join("\n")}`);
 }));
 
 router.get("/export/users", asyncHandler(async (req, res) => {
@@ -480,9 +480,9 @@ router.get("/export/users", asyncHandler(async (req, res) => {
     csvRows.push(row.join(","));
   }
 
-  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="elibrary-users-${new Date().toISOString().slice(0, 10)}.csv"`);
-  res.status(200).send(csvRows.join("\n"));
+  res.status(200).send(`\uFEFF${csvRows.join("\n")}`);
 }));
 
 router.get("/users", asyncHandler(async (req, res) => {
