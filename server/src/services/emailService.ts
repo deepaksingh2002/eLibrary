@@ -1,14 +1,12 @@
 import nodemailer from "nodemailer"
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT || "587"),
-  secure: process.env.SMTP_PORT === "465",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  }
-})
+const isSmtpConfigured = (): boolean =>
+  Boolean(
+    process.env.SMTP_HOST?.trim() &&
+    process.env.SMTP_USER?.trim() &&
+    process.env.SMTP_PASS?.trim() &&
+    process.env.SMTP_FROM?.trim()
+  )
 
 async function sendEmail(params: {
   to: string
@@ -16,6 +14,21 @@ async function sendEmail(params: {
   html: string
   text: string
 }): Promise<void> {
+  if (!isSmtpConfigured()) {
+    console.warn(`[Email] SMTP is not configured. Skipping email to ${params.to}.`)
+    return
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || "587"),
+    secure: process.env.SMTP_PORT === "465",
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    }
+  })
+
   await transporter.sendMail({
     from: process.env.SMTP_FROM,
     to: params.to,

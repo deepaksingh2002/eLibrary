@@ -1,5 +1,4 @@
 const REQUIRED_ENV_VARS = [
-  "PORT",
   "NODE_ENV",
   "MONGO_URI",
   "JWT_ACCESS_SECRET",
@@ -13,14 +12,9 @@ const REQUIRED_ENV_VARS = [
   "FRONTEND_URL",
   "CRON_SECRET",
   "PASSWORD_RESET_EXPIRES_MINUTES",
-  "SMTP_HOST",
-  "SMTP_PORT",
-  "SMTP_USER",
-  "SMTP_PASS",
-  "SMTP_FROM",
 ] as const;
 
-const OPTIONAL_AI_PROVIDER_VARS = ["GEMINI_API_KEY", "ANTHROPIC_API_KEY"] as const;
+const OPTIONAL_SMTP_VARS = ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"] as const;
 
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -49,9 +43,12 @@ export function validateEnv(): void {
     throw new Error("Environment variable MONGO_URI must start with mongodb:// or mongodb+srv://");
   }
 
-  const port = Number(requireEnv("PORT"));
-  if (!Number.isInteger(port) || port <= 0) {
-    throw new Error("Environment variable PORT must be a positive integer");
+  const portValue = process.env.PORT?.trim();
+  if (portValue) {
+    const port = Number(portValue);
+    if (!Number.isInteger(port) || port <= 0) {
+      throw new Error("Environment variable PORT must be a positive integer");
+    }
   }
 
   const nodeEnv = requireEnv("NODE_ENV");
@@ -66,9 +63,12 @@ export function validateEnv(): void {
   ensureValidUrl("CLIENT_URL");
   ensureValidUrl("FRONTEND_URL");
 
-  const smtpPort = Number(requireEnv("SMTP_PORT"));
-  if (!Number.isInteger(smtpPort) || smtpPort <= 0) {
-    throw new Error("Environment variable SMTP_PORT must be a positive integer");
+  const smtpPortValue = process.env.SMTP_PORT?.trim();
+  if (smtpPortValue) {
+    const smtpPort = Number(smtpPortValue);
+    if (!Number.isInteger(smtpPort) || smtpPort <= 0) {
+      throw new Error("Environment variable SMTP_PORT must be a positive integer");
+    }
   }
 
   const passwordResetMinutes = Number(requireEnv("PASSWORD_RESET_EXPIRES_MINUTES"));
@@ -76,8 +76,16 @@ export function validateEnv(): void {
     throw new Error("Environment variable PASSWORD_RESET_EXPIRES_MINUTES must be a positive integer");
   }
 
-  const hasAiProvider = OPTIONAL_AI_PROVIDER_VARS.some((name) => process.env[name]?.trim());
-  if (!hasAiProvider) {
-    throw new Error("One of GEMINI_API_KEY or ANTHROPIC_API_KEY must be configured");
+  const configuredSmtpVars = OPTIONAL_SMTP_VARS.filter((name) => process.env[name]?.trim());
+  if (configuredSmtpVars.length > 0 && configuredSmtpVars.length < OPTIONAL_SMTP_VARS.length) {
+    throw new Error("SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM must be configured together");
+  }
+
+  if (!process.env.GEMINI_API_KEY?.trim()) {
+    console.warn("[Env] GEMINI_API_KEY is not configured. AI explanations will use fallback text.");
+  }
+
+  if (configuredSmtpVars.length === 0) {
+    console.warn("[Env] SMTP is not configured. Email delivery will be disabled.");
   }
 }
