@@ -34,20 +34,23 @@ router.get("/me/dashboard", asyncHandler(async (req, res) => {
   ] = await Promise.all([
     User.findById(userId).select(
       "name email avatar streak longestStreak monthlyGoal totalBooksRead totalMinutesRead lastActiveDate preferences"
-    ),
+    ).lean(),
     ReadingProgress.find({ userId, status: "in-progress", progress: { $gt: 0 } })
       .sort({ lastRead: -1 })
       .limit(5)
-      .populate("bookId", "title author coverUrl avgRating genre"),
+      .populate("bookId", "title author coverUrl avgRating genre")
+      .lean(),
     ReadingProgress.find({ userId, status: "completed" })
       .sort({ updatedAt: -1 })
       .limit(4)
-      .populate("bookId", "title author coverUrl"),
+      .populate("bookId", "title author coverUrl")
+      .lean(),
     getMonthlyGoalProgress(userId),
     UserActivity.find({ userId })
       .sort({ createdAt: -1 })
       .limit(10)
-      .populate("bookId", "title author coverUrl"),
+      .populate("bookId", "title author coverUrl")
+      .lean(),
     UserActivity.aggregate([
       {
         $match: {
@@ -84,17 +87,17 @@ router.get("/me/dashboard", asyncHandler(async (req, res) => {
       name: user.name,
       email: user.email,
       avatar: user.avatar,
-      streak: user.streak,
-      longestStreak: user.longestStreak,
-      totalBooksRead: user.totalBooksRead,
-      totalMinutesRead: user.totalMinutesRead,
-      monthlyGoal: user.monthlyGoal,
+      streak: streakStatus.streak,
+      longestStreak: streakStatus.longestStreak,
+      totalBooksRead: user.totalBooksRead || 0,
+      totalMinutesRead: user.totalMinutesRead || 0,
+      monthlyGoal: user.monthlyGoal || 0,
       isActiveToday: streakStatus.isActiveToday,
     },
-    continueReading,
-    recentlyCompleted,
+    continueReading: continueReading.filter((progress) => progress.bookId),
+    recentlyCompleted: recentlyCompleted.filter((progress) => progress.bookId),
     goalProgress,
-    recentActivity,
+    recentActivity: recentActivity.filter((activity) => activity.bookId),
     weeklyActivity,
   });
 }));

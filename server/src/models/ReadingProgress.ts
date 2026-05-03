@@ -8,7 +8,6 @@ export interface IReadingProgress extends Document {
   sessions: { startTime: Date; endTime: Date; minutesRead: number }[];
   bookmarks: { _id?: mongoose.Types.ObjectId; page: number; note: string; createdAt: Date }[];
   lastRead?: Date;
-  completedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,12 +27,14 @@ const readingProgressSchema = new Schema<IReadingProgress>({
     note: { type: String, maxlength: 500, default: "" },
     createdAt: { type: Date, default: Date.now }
   }],
-  lastRead: { type: Date },
-  completedAt: { type: Date }
+  lastRead: { type: Date }
 }, { timestamps: true });
 
 readingProgressSchema.index({ userId: 1, bookId: 1 }, { unique: true });
 readingProgressSchema.index({ userId: 1, lastRead: -1 });
 readingProgressSchema.index({ userId: 1, status: 1 });
 
-export const ReadingProgress = mongoose.model<IReadingProgress>("ReadingProgress", readingProgressSchema);
+const ReadingProgress = mongoose.model<IReadingProgress>("ReadingProgress", readingProgressSchema);
+
+export { ReadingProgress };
+export default ReadingProgress;

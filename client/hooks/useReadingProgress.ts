@@ -5,32 +5,30 @@ import { useRef, useState, useEffect } from "react";
 import api from "../lib/api";
 import { useAuthStore } from "../store/authStore";
 import { ReadingProgress } from "../types";
+import { toast } from "../components/ui/Toast";
 
 export const useReadingProgress = (bookId: string) => {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const [isHydrated, setIsHydrated] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setIsHydrated(true);
   }, []);
 
-  const { data: progressData, isLoading } = useQuery<ReadingProgress>({
-    queryKey: ["progress", bookId],
-    queryFn: async () => {
-      console.log("[Progress] Fetching progress for book:", bookId);
-      try {
-        const response = await api.get(`/api/progress/${bookId}`);
-        console.log("[Progress] Fetched progress data:", response.data);
-        return response.data;
-      } catch (error) {
-        console.error("[Progress] Error fetching progress:", error);
-        throw error;
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
       }
-    },
-    // Fetch once the client is hydrated and we have a bookId.
-    // Do not gate on `user` here — token refresh/reauth is handled by the API layer.
-    enabled: isHydrated && !!bookId,
+    };
+  }, []);
+
+  const { data: progressData, isLoading } = useQuery<ReadingProgress | null>({
+    queryKey: ["progress", bookId],
+    queryFn: () => api.get(`/api/progress/${bookId}`).then((r) => r.data.progress),
+    enabled: isHydrated && !!bookId && !!user,
     staleTime: 1000 * 30,
     refetchOnWindowFocus: true,
   });
@@ -41,28 +39,41 @@ export const useReadingProgress = (bookId: string) => {
         progress: value,
         sessionMinutes: sessionMinutes || 0,
       }),
-    onSuccess: () => {
-      console.log("[Progress] Successfully updated progress");
+    onSuccess: (response) => {
+      queryClient.setQueryData(["progress", bookId], response.data.progress);
       queryClient.invalidateQueries({ queryKey: ["progress", bookId] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
-    onError: (error) => {
-      console.error("[Progress] Failed to update progress:", error);
+    onError: (error: any) => {
+      const msg =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to save progress";
+      toast.error(msg);
     },
   });
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const updateProgress = (value: number, sessionMinutes?: number) => {
-    console.log("[Progress] Updating to", value, "with session minutes:", sessionMinutes);
-    clearTimeout(debounceRef.current);
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
     debounceRef.current = setTimeout(() => {
       updateMutation.mutate({ value, sessionMinutes });
     }, 800);
   };
 
   const addBookmark = async (page: number, note = "") => {
-    await api.post(`/api/progress/${bookId}/bookmarks`, { page, note });
-    queryClient.invalidateQueries({ queryKey: ["progress", bookId] });
+    try {
+      await api.post(`/api/progress/${bookId}/bookmarks`, { page, note });
+      queryClient.invalidateQueries({ queryKey: ["progress", bookId] });
+    } catch (error: any) {
+      const msg =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to add bookmark";
+      toast.error(msg);
+      throw error;
+    }
   };
 
   const editBookmark = async (bookmarkId: string, note: string) => {
@@ -76,10 +87,14 @@ export const useReadingProgress = (bookId: string) => {
   };
 
   return {
-    progress: progressData || null,
+    progress: progressData ?? null,
+    currentValue: progressData?.progress ?? 0,
+    status: progressData?.status ?? "not-started",
+    bookmarks: progressData?.bookmarks ?? [],
+    sessions: progressData?.sessions ?? [],
     isLoading,
+    isUpdating: updateMutation.isPending,
     updateProgress,
-    bookmarks: progressData?.bookmarks || [],
     addBookmark,
     editBookmark,
     removeBookmark,

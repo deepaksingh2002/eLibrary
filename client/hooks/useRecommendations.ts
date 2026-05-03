@@ -18,30 +18,23 @@ export function useRecommendations() {
 
   const { data, isLoading, error } = useQuery<RecommendationsResponse>({
     queryKey: ["recommendations"],
-    queryFn: async () => {
-      try {
-        console.log("[useRecommendations] Fetching recommendations for user:", user?.id);
-        const response = await api.get("/api/recommendations");
-        console.log("[useRecommendations] Successfully fetched recommendations:", response.data);
-        return response.data;
-      } catch (err) {
-        console.error("[useRecommendations] Error fetching recommendations:", err);
-        throw err;
-      }
-    },
+    queryFn: () => api.get("/api/recommendations").then((r) => r.data),
     enabled: isHydrated && !!user,
     staleTime: 1000 * 60 * 10,
-    retry: 2
+    retry: 1
   });
 
   const refreshMutation = useMutation({
     mutationFn: () => api.post("/api/recommendations/refresh").then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
-      toast.success("Recommendations refreshed!");
+      toast.success("Recommendations updated!");
     },
-    onError: (error) => {
-      const msg = error instanceof Error ? error.message : "Please try again later";
+    onError: (error: any) => {
+      const msg =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Could not refresh. Please try again later.";
       toast.error(msg);
     },
   });

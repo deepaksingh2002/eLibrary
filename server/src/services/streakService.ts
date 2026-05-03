@@ -1,40 +1,47 @@
 import { IUser, User } from "../models/User";
 
 export async function updateStreak(userId: string): Promise<void> {
-  const user = await User.findById(userId).select("streak longestStreak lastActiveDate");
+  try {
+    const user = await User.findById(userId).select("streak longestStreak lastActiveDate");
 
-  if (!user) return;
+    if (!user) return;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  let newStreak = 1;
+    if (!user.lastActiveDate) {
+      user.streak = 1;
+      user.longestStreak = 1;
+      user.lastActiveDate = new Date();
+      await user.save();
+      return;
+    }
 
-  if (user.lastActiveDate) {
     const last = new Date(user.lastActiveDate);
     last.setHours(0, 0, 0, 0);
 
-    const diffDays = Math.round(
-      (today.getTime() - last.getTime()) / (1000 * 60 * 60 * 24)
-    );
+    const diffMs = today.getTime() - last.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
     if (diffDays === 0) {
       return;
     }
 
     if (diffDays === 1) {
-      newStreak = user.streak + 1;
+      user.streak++;
+    } else {
+      user.streak = 1;
     }
-  }
 
-  await User.findByIdAndUpdate(userId, {
-    streak: newStreak,
-    longestStreak: Math.max(newStreak, user.longestStreak ?? 0),
-    lastActiveDate: new Date(),
-  });
+    user.longestStreak = Math.max(user.streak, user.longestStreak);
+    user.lastActiveDate = new Date();
+    await user.save();
+  } catch (err) {
+    console.error("[Streak] updateStreak failed:", err);
+  }
 }
 
-export function getStreakStatus(user: IUser): {
+export function getStreakStatus(user: IUser | any): {
   streak: number;
   longestStreak: number;
   isActiveToday: boolean;

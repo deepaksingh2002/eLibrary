@@ -81,11 +81,9 @@ export default function BookDetailClient() {
       console.log(`[DetailPage] Fetching progress for book ${id}`);
       const response = await api.get(`/api/progress/${id}`);
       console.log(`[DetailPage] Progress fetched:`, response.data);
-      return response.data;
+      return response.data.progress;
     },
-    // Allow progress fetch once the client is hydrated and we have the book id.
-    // Avoid gating on `user` so the refresh flow can obtain a token and retry if needed.
-    enabled: isHydrated && !!id,
+    enabled: isHydrated && !!id && !!user,
     staleTime: 1000 * 30,
     refetchOnWindowFocus: true,
   });

@@ -23,4 +23,7 @@ const recommendationSchema = new Schema<IRecommendation>({
 recommendationSchema.index({ userId: 1 }, { unique: true });
 recommendationSchema.index({ computedAt: -1 });
 
-export const Recommendation = mongoose.model<IRecommendation>("Recommendation", recommendationSchema);
+const Recommendation = mongoose.model<IRecommendation>("Recommendation", recommendationSchema);
+
+export { Recommendation };
+export default Recommendation;

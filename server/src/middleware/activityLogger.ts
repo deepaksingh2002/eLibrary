@@ -10,9 +10,17 @@ interface LogActivityParams {
 }
 
 export function logActivity(params: LogActivityParams): void {
-  setImmediate(() => {
-    UserActivity.create(params).catch((error) => {
-      console.error("Failed to log user activity:", error);
-    });
+  setImmediate(async () => {
+    try {
+      await UserActivity.create({
+        userId: params.userId.toString(),
+        bookId: params.bookId.toString(),
+        eventType: params.eventType,
+        ...(params.rating && { rating: params.rating }),
+        ...(params.metadata && { metadata: params.metadata })
+      });
+    } catch (error) {
+      console.error("[Activity] Log failed:", error);
+    }
   });
 }

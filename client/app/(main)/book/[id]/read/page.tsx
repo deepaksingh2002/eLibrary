@@ -17,7 +17,7 @@ export default function ReadPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const id = params.id as string;
-  const { user, isAuthenticated } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
 
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -63,8 +63,8 @@ export default function ReadPage() {
   // Fetch saved progress (wait for hydration before enabling)
   const { data: progressData } = useQuery({
     queryKey: ["progress", id],
-    queryFn: () => api.get(`/api/progress/${id}`).then((r) => r.data),
-    enabled: isHydrated && !!id,
+    queryFn: () => api.get(`/api/progress/${id}`).then((r) => r.data.progress),
+    enabled: isHydrated && !!id && isAuthenticated,
     staleTime: 1000 * 60 * 5,
   });
 

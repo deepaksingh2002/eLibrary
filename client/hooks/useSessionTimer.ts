@@ -2,24 +2,24 @@ import { useState, useEffect, useRef } from "react";
 
 export const useSessionTimer = () => {
   const startTime = useRef<Date>(new Date());
-  const [elapsedMinutes, setElapsedMinutes] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
     startTime.current = new Date();
     
     const interval = setInterval(() => {
-      const diff = (Date.now() - startTime.current.getTime()) / 60000;
-      setElapsedMinutes(Math.floor(diff));
+      const diffMs = Date.now() - startTime.current.getTime();
+      const diffMins = Math.floor(diffMs / 60_000);
+      setElapsed(diffMins);
     }, 60000);
 
-    return () => {
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, []);
 
-  const getSessionMinutes = () => {
-    return Math.floor((Date.now() - startTime.current.getTime()) / 60000);
+  const getSessionMinutes = (): number => {
+    const diffMs = Date.now() - startTime.current.getTime();
+    return Math.floor(diffMs / 60_000);
   };
 
-  return { elapsedMinutes, getSessionMinutes, isActive: true };
+  return { elapsedMinutes: elapsed, getSessionMinutes };
 };

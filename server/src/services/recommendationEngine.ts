@@ -15,46 +15,56 @@ function jaccardSimilarity(setA: Set<string>, setB: Set<string>): number {
 }
 
 export async function computeColdStartForUser(userId: string): Promise<void> {
-  const user = await User.findById(userId).select("preferences").lean();
-  const genres = user?.preferences?.genres || [];
+  try {
+    const user = await User.findById(userId).select("preferences").lean();
+    if (!user) return;
 
-  let topBooks: { _id: Types.ObjectId }[] = [];
+    let books: { _id: Types.ObjectId }[] = [];
+    const genres = user.preferences?.genres || [];
 
-  if (genres.length > 0) {
-    topBooks = await Book.find({
-      genre: { $in: genres },
-      status: "published",
-      isDeleted: false,
-      avgRating: { $gte: 3.5 }
-    })
-      .sort({ avgRating: -1, downloads: -1 })
-      .limit(20)
-      .select("_id")
-      .lean();
+    if (genres.length > 0) {
+      books = await Book.find({
+        genre: { $in: genres },
+        status: "published",
+        isDeleted: false,
+        avgRating: { $gte: 3.5 }
+      })
+        .sort({ avgRating: -1, downloads: -1 })
+        .limit(20)
+        .select("_id")
+        .lean();
+    }
+
+    if (books.length < 5) {
+      books = await Book.find({
+        status: "published",
+        isDeleted: false
+      })
+        .sort({ avgRating: -1, downloads: -1 })
+        .limit(20)
+        .select("_id")
+        .lean();
+    }
+
+    await Recommendation.findOneAndUpdate(
+      { userId },
+      {
+        $set: {
+          books: books.map((b) => ({
+            bookId: b._id,
+            score: 1.0,
+            reason: "cold-start"
+          })),
+          computedAt: new Date(),
+          isColdStart: true
+        },
+        $inc: { version: 1 }
+      },
+      { upsert: true, new: true }
+    );
+  } catch (err) {
+    console.error("[Recommendations] computeColdStartForUser failed:", err);
   }
-
-  if (topBooks.length === 0) {
-    topBooks = await Book.find({ status: "published", isDeleted: false })
-      .sort({ avgRating: -1, downloads: -1 })
-      .limit(20)
-      .select("_id")
-      .lean();
-  }
-
-  await Recommendation.findOneAndUpdate(
-    { userId },
-    {
-      books: topBooks.map((b) => ({
-        bookId: b._id,
-        score: 1,
-        reason: "cold-start"
-      })),
-      computedAt: new Date(),
-      isColdStart: true,
-      $inc: { version: 1 }
-    },
-    { upsert: true, new: true }
-  );
 }
 
 export async function computeRecommendations(): Promise<void> {
@@ -159,13 +169,15 @@ export async function computeRecommendations(): Promise<void> {
       await Recommendation.findOneAndUpdate(
         { userId },
         {
-          books: candidates.map((b) => ({
-            bookId: new Types.ObjectId(b.bookId),
-            score: Math.round(b.score * 100) / 100,
-            reason: "collaborative"
-          })),
-          computedAt: new Date(),
-          isColdStart: false,
+          $set: {
+            books: candidates.map((b) => ({
+              bookId: new Types.ObjectId(b.bookId),
+              score: Math.round(b.score * 100) / 100,
+              reason: "collaborative"
+            })),
+            computedAt: new Date(),
+            isColdStart: false
+          },
           $inc: { version: 1 }
         },
         { upsert: true, new: true }
@@ -191,33 +203,55 @@ export async function getSimilarBooks(
   bookId: string,
   limit = 6
 ): Promise<{ bookId: string; score: number }[]> {
-  const targetBook = await Book.findById(bookId).lean();
-  if (!targetBook) return [];
+  try {
+    const target = await Book.findById(bookId)
+      .select("genre tags author")
+      .lean();
 
-  const otherBooks = await Book.find({
-    status: "published",
-    isDeleted: false,
-    _id: { $ne: targetBook._id }
-  }).select("genre tags author").lean();
+    if (!target) return [];
 
-  const results: { bookId: string; score: number }[] = [];
+    const allBooks = await Book.find({
+      _id: { $ne: bookId },
+      status: "published",
+      isDeleted: false
+    })
+      .select("_id genre tags author")
+      .lean();
 
-  for (const other of otherBooks) {
-    let score = 0;
+    const scored = allBooks.map((book) => {
+      let score = 0;
 
-    if (targetBook.genre === other.genre) score += 0.4;
-    if (targetBook.author.toLowerCase() === other.author.toLowerCase()) score += 0.3;
+      if (book.genre === target.genre) score += 0.4;
 
-    const tagsA = new Set((targetBook.tags || []).map((t: string) => t.toLowerCase()));
-    const tagsB = new Set((other.tags || []).map((t: string) => t.toLowerCase()));
-    const tagJaccard = jaccardSimilarity(tagsA, tagsB);
-    score += tagJaccard * 0.3;
+      if (
+        book.author?.toLowerCase() ===
+        target.author?.toLowerCase()
+      ) {
+        score += 0.3;
+      }
 
-    if (score > 0) {
-      results.push({ bookId: other._id.toString(), score: Math.round(score * 100) / 100 });
-    }
+      const tagsA = new Set(
+        (target.tags || []).map((t: string) => t.toLowerCase())
+      );
+      const tagsB = new Set(
+        (book.tags || []).map((t: string) => t.toLowerCase())
+      );
+      if (tagsA.size > 0 || tagsB.size > 0) {
+        score += jaccardSimilarity(tagsA, tagsB) * 0.3;
+      }
+
+      return {
+        bookId: book._id.toString(),
+        score: Math.round(score * 100) / 100
+      };
+    });
+
+    return scored
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+  } catch (err) {
+    console.error("[Recommendations] getSimilarBooks failed:", err);
+    return [];
   }
-
-  results.sort((a, b) => b.score - a.score);
-  return results.slice(0, limit);
 }

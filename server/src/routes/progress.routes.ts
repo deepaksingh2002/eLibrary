@@ -1,319 +1,326 @@
 import { Router } from "express";
 import { Types } from "mongoose";
 import { protect } from "../middleware/auth.middleware";
-import { logActivity } from "../middleware/activityLogger";
-import { Book } from "../models/Book";
-import { ReadingProgress } from "../models/ReadingProgress";
-import { User } from "../models/User";
-import { updateStreak } from "../services/streakService";
-import { ApiError } from "../utils/ApiError";
 import { asyncHandler } from "../utils/asyncHandler";
-import { isValidObjectId, paginationParams, sanitizeString } from "../utils/validate";
+import { ApiError } from "../utils/ApiError";
+import { ReadingProgress } from "../models/ReadingProgress";
+import { UserActivity } from "../models/UserActivity";
+import { User } from "../models/User";
+import { Book } from "../models/Book";
+import { updateStreak } from "../services/streakService";
+import { logActivity } from "../middleware/activityLogger";
 
 const router = Router();
 
 router.use(protect);
 
-function normalizeProgressStatus(progress: number): "not-started" | "in-progress" | "completed" {
-  if (progress === 100) return "completed";
-  if (progress > 0) return "in-progress";
-  return "not-started";
-}
+router.patch(
+  "/:bookId",
+  asyncHandler(async (req, res) => {
+    const { bookId } = req.params;
+    const userId = req.user!.id;
+    const { progress, sessionMinutes } = req.body;
 
-router.get("/shelf/continue-reading", asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const progressList = await ReadingProgress.find({
-    userId,
-    status: "in-progress",
-    progress: { $gt: 0, $lt: 100 },
-  })
-    .sort({ lastRead: -1 })
-    .limit(10)
-    .populate("bookId", "title author coverUrl avgRating genre");
-
-  res.status(200).json(progressList);
-}));
-
-router.get("/shelf/completed", asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const progressList = await ReadingProgress.find({
-    userId,
-    status: "completed",
-  })
-    .sort({ updatedAt: -1 })
-    .limit(20)
-    .populate("bookId", "title author coverUrl avgRating genre");
-
-  res.status(200).json(progressList);
-}));
-
-router.get("/", asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const paginationQuery = { ...req.query, limit: req.query.limit ?? "10" };
-  const { page, limit, skip } = paginationParams(paginationQuery);
-  const status = req.query.status as string | undefined;
-  const filter: Record<string, unknown> = { userId };
-
-  if (status) {
-    if (!["in-progress", "completed", "not-started"].includes(status)) {
-      throw new ApiError(400, "Invalid status filter");
+    if (!Types.ObjectId.isValid(bookId)) {
+      throw new ApiError(400, "Invalid book ID");
     }
-    filter.status = status;
-  }
 
-  const [items, total] = await Promise.all([
-    ReadingProgress.find(filter)
-      .sort({ lastRead: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate("bookId", "title author coverUrl genre avgRating totalReviews"),
-    ReadingProgress.countDocuments(filter),
-  ]);
+    const progressNum = Number(progress);
+    if (Number.isNaN(progressNum) || progressNum < 0 || progressNum > 100) {
+      throw new ApiError(400, "Progress must be a number between 0 and 100");
+    }
 
-  res.status(200).json({
-    items,
-    total,
-    page,
-    totalPages: Math.ceil(total / limit),
-  });
-}));
+    const book = await Book.findOne({ _id: bookId, isDeleted: false });
+    if (!book) throw new ApiError(404, "Book not found");
 
-router.post("/:bookId/bookmarks", asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const { bookId } = req.params;
-  const { page, note } = req.body;
+    const newStatus =
+      progressNum === 100 ? "completed" :
+      progressNum > 0 ? "in-progress" :
+      "not-started";
 
-  if (!isValidObjectId(bookId)) throw new ApiError(400, "Invalid book id");
-  if (!Number.isInteger(page) || page <= 0) {
-    throw new ApiError(400, "page must be a positive integer");
-  }
-  if (note !== undefined && typeof note !== "string") {
-    throw new ApiError(400, "note must be a string");
-  }
-  if (typeof note === "string" && note.length > 500) {
-    throw new ApiError(400, "note must be 500 characters or fewer");
-  }
+    const existing = await ReadingProgress.findOne({ userId, bookId });
+    const wasAlreadyCompleted = existing?.status === "completed";
 
-  let progressDoc = await ReadingProgress.findOne({ userId, bookId });
+    const updateObj: any = {
+      $set: {
+        progress: progressNum,
+        status: newStatus,
+        lastRead: new Date()
+      }
+    };
 
-  if (!progressDoc) {
-    progressDoc = await ReadingProgress.findOneAndUpdate(
+    const sessionMins = Number(sessionMinutes) || 0;
+    if (sessionMins > 0) {
+      updateObj.$push = {
+        sessions: {
+          startTime: new Date(Date.now() - sessionMins * 60_000),
+          endTime: new Date(),
+          minutesRead: sessionMins
+        }
+      };
+    }
+
+    const updated = await ReadingProgress.findOneAndUpdate(
       { userId, bookId },
+      updateObj,
       {
-        $setOnInsert: {
-          userId,
-          bookId,
+        upsert: true,
+        new: true,
+        runValidators: true,
+        setDefaultsOnInsert: true
+      }
+    );
+
+    if (sessionMins > 0) {
+      await User.findByIdAndUpdate(userId, {
+        $inc: { totalMinutesRead: sessionMins }
+      });
+    }
+
+    if (progressNum === 100 && !wasAlreadyCompleted) {
+      await User.findByIdAndUpdate(userId, {
+        $inc: { totalBooksRead: 1 }
+      });
+      logActivity({ userId, bookId, eventType: "complete" });
+    }
+
+    updateStreak(userId).catch((err) =>
+      console.error("[Progress] Streak update failed:", err)
+    );
+
+    logActivity({
+      userId,
+      bookId,
+      eventType: "progress",
+      metadata: { progress: progressNum }
+    });
+
+    res.json({ progress: updated });
+  })
+);
+
+router.get(
+  "/:bookId",
+  asyncHandler(async (req, res) => {
+    const { bookId } = req.params;
+    const userId = req.user!.id;
+
+    if (!Types.ObjectId.isValid(bookId)) {
+      throw new ApiError(400, "Invalid book ID");
+    }
+
+    const progress = await ReadingProgress.findOne({ userId, bookId }).lean();
+
+    if (!progress) {
+      return res.json({
+        progress: {
           progress: 0,
           status: "not-started",
           sessions: [],
           bookmarks: [],
-        },
-      },
-      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
-    );
-  }
+          lastRead: null
+        }
+      });
+    }
 
-  if (!progressDoc) throw new ApiError(500, "Failed to initialize reading progress");
-  if (progressDoc.bookmarks.length >= 50) throw new ApiError(400, "Maximum 50 bookmarks per book");
-  if (progressDoc.bookmarks.some((bookmark) => bookmark.page === page)) {
-    throw new ApiError(409, "Bookmark already exists for this page");
-  }
+    res.json({ progress });
+  })
+);
 
-  const sanitizedNote = typeof note === "string" ? sanitizeString(note) : "";
+router.get(
+  "/",
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(20, parseInt(req.query.limit as string) || 10);
+    const skip = (page - 1) * limit;
+    const { status } = req.query;
 
-  const updatedDoc = await ReadingProgress.findOneAndUpdate(
-    { userId, bookId },
-    {
-      $push: {
-        bookmarks: { page, note: sanitizedNote, createdAt: new Date() },
-      },
-    },
-    { new: true, runValidators: true }
-  );
+    const filter: any = { userId };
+    if (status) filter.status = status;
 
-  if (!updatedDoc) throw new ApiError(404, "Reading progress not found");
+    const [progressList, total] = await Promise.all([
+      ReadingProgress.find(filter)
+        .sort({ lastRead: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("bookId", "title author coverUrl genre avgRating totalReviews")
+        .lean(),
+      ReadingProgress.countDocuments(filter)
+    ]);
 
-  const newBookmark = updatedDoc.bookmarks[updatedDoc.bookmarks.length - 1];
-  logActivity({ userId, bookId, eventType: "bookmark", metadata: { page } });
+    res.json({
+      progressList,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit)
+    });
+  })
+);
 
-  res.status(201).json({ bookmark: newBookmark, total: updatedDoc.bookmarks.length });
-}));
+router.get(
+  "/shelf/continue-reading",
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
 
-router.get("/:bookId/bookmarks", asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const { bookId } = req.params;
-  if (!isValidObjectId(bookId)) throw new ApiError(400, "Invalid book id");
+    const shelf = await ReadingProgress.find({
+      userId,
+      status: "in-progress",
+      progress: { $gt: 0, $lt: 100 }
+    })
+      .sort({ lastRead: -1 })
+      .limit(10)
+      .populate("bookId", "title author coverUrl genre avgRating")
+      .lean();
 
-  const progressDoc = await ReadingProgress.findOne({ userId, bookId });
+    res.json({ shelf });
+  })
+);
 
-  if (!progressDoc) {
-    return res.status(200).json({ bookmarks: [] });
-  }
+router.get(
+  "/shelf/completed",
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
 
-  const bookmarks = [...progressDoc.bookmarks].sort((a, b) => a.page - b.page);
-  res.status(200).json({ bookmarks });
-}));
+    const completed = await ReadingProgress.find({
+      userId,
+      status: "completed"
+    })
+      .sort({ updatedAt: -1 })
+      .limit(20)
+      .populate("bookId", "title author coverUrl genre avgRating")
+      .lean();
 
-router.patch("/:bookId/bookmarks/:bookmarkId", asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const { bookId, bookmarkId } = req.params;
-  const { note } = req.body;
+    res.json({ completed });
+  })
+);
 
-  if (!isValidObjectId(bookId)) throw new ApiError(400, "Invalid book id");
-  if (!isValidObjectId(bookmarkId)) throw new ApiError(400, "Invalid bookmark id");
-  if (typeof note !== "string") throw new ApiError(400, "note is required");
-  if (note.length > 500) throw new ApiError(400, "note must be 500 characters or fewer");
+router.post(
+  "/:bookId/bookmarks",
+  asyncHandler(async (req, res) => {
+    const { bookId } = req.params;
+    const userId = req.user!.id;
+    const { page, note = "" } = req.body;
 
-  const sanitizedNote = sanitizeString(note);
+    if (!Types.ObjectId.isValid(bookId)) {
+      throw new ApiError(400, "Invalid book ID");
+    }
+    if (!page || Number.isNaN(Number(page)) || Number(page) < 1) {
+      throw new ApiError(400, "Valid page number is required");
+    }
 
-  const updateResult = await ReadingProgress.updateOne(
-    { userId, bookId, "bookmarks._id": bookmarkId },
-    { $set: { "bookmarks.$.note": sanitizedNote } }
-  );
-
-  if (updateResult.matchedCount === 0) {
-    throw new ApiError(404, "Bookmark not found");
-  }
-
-  const progressDoc = await ReadingProgress.findOne({ userId, bookId });
-  const bookmark = progressDoc?.bookmarks.find((entry) => entry._id?.toString() === bookmarkId);
-
-  res.status(200).json({ bookmark });
-}));
-
-router.delete("/:bookId/bookmarks/:bookmarkId", asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const { bookId, bookmarkId } = req.params;
-
-  if (!isValidObjectId(bookId)) throw new ApiError(400, "Invalid book id");
-  if (!isValidObjectId(bookmarkId)) throw new ApiError(400, "Invalid bookmark id");
-
-  const objectId = new Types.ObjectId(bookmarkId);
-  const updateResult = await ReadingProgress.updateOne(
-    { userId, bookId, "bookmarks._id": objectId },
-    { $pull: { bookmarks: { _id: objectId } } }
-  );
-
-  if (updateResult.matchedCount === 0) {
-    throw new ApiError(404, "Bookmark not found");
-  }
-
-  res.status(200).json({ message: "Bookmark removed" });
-}));
-
-router.patch("/:bookId", asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const { bookId } = req.params;
-  const { progress, sessionMinutes } = req.body as { progress: number; sessionMinutes?: number };
-
-  console.log(`[Progress PATCH] userId=${userId}, bookId=${bookId}, progress=${progress}, sessionMinutes=${sessionMinutes}`);
-
-  if (!isValidObjectId(bookId)) throw new ApiError(400, "Invalid book id");
-  if (typeof progress !== "number" || Number.isNaN(progress) || progress < 0 || progress > 100) {
-    throw new ApiError(400, "progress must be a number between 0 and 100");
-  }
-  if (sessionMinutes !== undefined && (!Number.isFinite(sessionMinutes) || sessionMinutes <= 0)) {
-    throw new ApiError(400, "sessionMinutes must be a positive number");
-  }
-
-  const book = await Book.findOne({ _id: bookId, isDeleted: false });
-  if (!book) throw new ApiError(404, "Book not found");
-
-  const existing = await ReadingProgress.findOne({ userId, bookId });
-  const wasAlreadyComplete = existing?.status === "completed";
-  const hasEverCompleted = Boolean(existing?.completedAt);
-  const nextStatus = normalizeProgressStatus(progress);
-
-  console.log(`[Progress PATCH] Existing status=${existing?.status}, nextStatus=${nextStatus}, hasEverCompleted=${hasEverCompleted}`);
-
-  const progressDoc = await ReadingProgress.findOneAndUpdate(
-    { userId, bookId },
-    {
-      $set: {
+    let prog = await ReadingProgress.findOne({ userId, bookId });
+    if (!prog) {
+      prog = await ReadingProgress.create({
         userId,
         bookId,
-        progress,
-        status: nextStatus,
-        lastRead: new Date(),
-        ...(progress === 100 && !hasEverCompleted ? { completedAt: new Date() } : {}),
-      },
-    },
-    { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
-  );
+        progress: 0,
+        status: "not-started"
+      });
+    }
 
-  console.log(`[Progress PATCH] Saved successfully:`, {
-    id: progressDoc?._id,
-    progress: progressDoc?.progress,
-    status: progressDoc?.status
-  });
+    if (prog.bookmarks.length >= 50) {
+      throw new ApiError(400, "Maximum 50 bookmarks per book reached");
+    }
 
-  if (!progressDoc) throw new ApiError(500, "Failed to update reading progress");
+    const duplicate = prog.bookmarks.find((b) => b.page === Number(page));
+    if (duplicate) {
+      throw new ApiError(409, "A bookmark already exists for this page");
+    }
 
-  if (sessionMinutes && sessionMinutes > 0) {
-    await Promise.all([
-      ReadingProgress.updateOne(
-        { _id: progressDoc._id },
-        {
-          $push: {
-            sessions: {
-              startTime: new Date(Date.now() - sessionMinutes * 60000),
-              endTime: new Date(),
-              minutesRead: sessionMinutes,
-            },
-          },
-        }
-      ),
-      User.findByIdAndUpdate(userId, { $inc: { totalMinutesRead: sessionMinutes } }, { new: true }),
-    ]);
-  }
+    prog.bookmarks.push({
+      page: Number(page),
+      note: String(note).trim().slice(0, 500),
+      createdAt: new Date()
+    } as any);
+    await prog.save();
 
-  if (!hasEverCompleted && !wasAlreadyComplete && nextStatus === "completed") {
-    await User.findByIdAndUpdate(userId, { $inc: { totalBooksRead: 1 } }, { new: true });
-    logActivity({ userId, bookId, eventType: "complete" });
-  }
+    logActivity({ userId, bookId, eventType: "bookmark" });
 
-  void updateStreak(userId).catch((error) => {
-    console.error("Failed to update streak:", error);
-  });
-
-  logActivity({
-    userId,
-    bookId,
-    eventType: "progress",
-    metadata: { progress },
-  });
-
-  const updatedDoc = await ReadingProgress.findById(progressDoc._id);
-  res.status(200).json(updatedDoc);
-}));
-
-router.get("/:bookId", asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const { bookId } = req.params;
-  console.log(`[Progress GET] userId=${userId}, bookId=${bookId}`);
-  
-  if (!isValidObjectId(bookId)) throw new ApiError(400, "Invalid book id");
-
-  const progressDoc = await ReadingProgress.findOne({ userId, bookId });
-  
-  console.log(`[Progress GET] Found progress:`, {
-    id: progressDoc?._id,
-    progress: progressDoc?.progress,
-    status: progressDoc?.status
-  });
-
-  if (!progressDoc) {
-    console.log(`[Progress GET] No progress found, returning defaults`);
-    return res.status(200).json({
-      progress: 0,
-      status: "not-started",
-      sessions: [],
-      bookmarks: [],
-      lastRead: null,
+    res.status(201).json({
+      bookmark: prog.bookmarks[prog.bookmarks.length - 1],
+      total: prog.bookmarks.length
     });
-  }
+  })
+);
 
-  res.status(200).json(progressDoc);
-}));
+router.get(
+  "/:bookId/bookmarks",
+  asyncHandler(async (req, res) => {
+    const { bookId } = req.params;
+    const userId = req.user!.id;
+
+    if (!Types.ObjectId.isValid(bookId)) {
+      throw new ApiError(400, "Invalid book ID");
+    }
+
+    const prog = await ReadingProgress.findOne({ userId, bookId }).lean();
+
+    if (!prog) return res.json({ bookmarks: [] });
+
+    const sorted = [...(prog.bookmarks || [])].sort((a, b) => a.page - b.page);
+
+    res.json({ bookmarks: sorted });
+  })
+);
+
+router.patch(
+  "/:bookId/bookmarks/:bookmarkId",
+  asyncHandler(async (req, res) => {
+    const { bookId, bookmarkId } = req.params;
+    const userId = req.user!.id;
+    const { note } = req.body;
+
+    if (!Types.ObjectId.isValid(bookId) || !Types.ObjectId.isValid(bookmarkId)) {
+      throw new ApiError(400, "Invalid bookmark request");
+    }
+
+    const result = await ReadingProgress.updateOne(
+      {
+        userId,
+        bookId,
+        "bookmarks._id": new Types.ObjectId(bookmarkId)
+      },
+      {
+        $set: {
+          "bookmarks.$.note": String(note || "").trim().slice(0, 500)
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      throw new ApiError(404, "Bookmark not found");
+    }
+
+    res.json({ message: "Bookmark updated" });
+  })
+);
+
+router.delete(
+  "/:bookId/bookmarks/:bookmarkId",
+  asyncHandler(async (req, res) => {
+    const { bookId, bookmarkId } = req.params;
+    const userId = req.user!.id;
+
+    if (!Types.ObjectId.isValid(bookId) || !Types.ObjectId.isValid(bookmarkId)) {
+      throw new ApiError(400, "Invalid bookmark request");
+    }
+
+    const result = await ReadingProgress.updateOne(
+      { userId, bookId },
+      {
+        $pull: {
+          bookmarks: { _id: new Types.ObjectId(bookmarkId) }
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      throw new ApiError(404, "Bookmark not found");
+    }
+
+    res.json({ message: "Bookmark deleted" });
+  })
+);
 
 export default router;

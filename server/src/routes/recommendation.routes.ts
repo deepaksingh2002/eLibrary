@@ -1,39 +1,31 @@
 import { Router } from "express";
+import { Types } from "mongoose";
 import { protect } from "../middleware/auth.middleware";
 import { Recommendation } from "../models/Recommendation";
 import { Book } from "../models/Book";
 import { UserActivity } from "../models/UserActivity";
-import { User } from "../models/User";
 import { computeColdStartForUser, getSimilarBooks } from "../services/recommendationEngine";
 import { explainRecommendation, isGeminiAvailable } from "../services/claudeService";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
-import { isValidObjectId } from "../utils/validate";
 
 const router = Router();
-
-interface ActivityBookSummary {
-  title: string;
-  author: string;
-  genre: string;
-}
 
 router.get("/", protect, asyncHandler(async (req, res) => {
   const userId = req.user!.id;
   let rec = await Recommendation.findOne({ userId })
-    .populate("books.bookId", "title author coverUrl genre avgRating totalReviews downloads tags");
+    .populate("books.bookId", "title author coverUrl genre avgRating totalReviews downloads tags")
+    .lean();
 
   if (!rec) {
+    console.log("[Recommendations] No recommendations for user:", userId, "- computing cold start");
     await computeColdStartForUser(userId);
     rec = await Recommendation.findOne({ userId })
-      .populate("books.bookId", "title author coverUrl genre avgRating totalReviews downloads tags");
+      .populate("books.bookId", "title author coverUrl genre avgRating totalReviews downloads tags")
+      .lean();
   }
 
-  if (!rec) {
-    throw new ApiError(500, "Failed to fetch recommendations");
-  }
-
-  const validBooks = rec.books
+  const recommendations = (rec?.books || [])
     .filter((b) => b.bookId != null)
     .map((b) => ({
       book: b.bookId,
@@ -42,22 +34,46 @@ router.get("/", protect, asyncHandler(async (req, res) => {
     }));
 
   res.status(200).json({
-    recommendations: validBooks,
-    isColdStart: rec.isColdStart,
-    computedAt: rec.computedAt,
-    total: validBooks.length
+    recommendations,
+    isColdStart: rec?.isColdStart ?? true,
+    computedAt: rec?.computedAt ?? null,
+    total: recommendations.length
   });
+}));
+
+router.get("/similar/:bookId", asyncHandler(async (req, res) => {
+  const { bookId } = req.params;
+
+  if (!Types.ObjectId.isValid(bookId)) {
+    throw new ApiError(400, "Invalid book ID");
+  }
+
+  const similar = await getSimilarBooks(bookId, 6);
+
+  const populated = await Promise.all(
+    similar.map(async (item) => {
+      const book = await Book.findById(item.bookId)
+        .select("title author coverUrl genre avgRating")
+        .lean();
+      return { book, score: item.score };
+    })
+  );
+
+  res.status(200).json({ similar: populated.filter((item) => item.book !== null) });
 }));
 
 router.get("/:bookId/explain", protect, asyncHandler(async (req, res) => {
   const userId = req.user!.id;
   const { bookId } = req.params;
-  
-  console.log(`[Recommendations] Explaining recommendation for book ${bookId} user ${userId}`);
-  
-  if (!isValidObjectId(bookId)) throw new ApiError(400, "Invalid book id");
 
-  const targetBook = await Book.findById(bookId).select("title author genre tags").lean();
+  if (!Types.ObjectId.isValid(bookId)) {
+    throw new ApiError(400, "Invalid book ID");
+  }
+
+  const targetBook = await Book.findOne({ _id: bookId, isDeleted: false })
+    .select("title author genre tags")
+    .lean();
+
   if (!targetBook) throw new ApiError(404, "Book not found");
 
   const recentActivity = await UserActivity.find({
@@ -69,24 +85,13 @@ router.get("/:bookId/explain", protect, asyncHandler(async (req, res) => {
     .populate("bookId", "title author genre")
     .lean();
 
-  let likedActivities = recentActivity.filter((a) => a.eventType === "rate" && a.rating && a.rating >= 4);
-  if (likedActivities.length === 0) {
-    likedActivities = recentActivity;
-  }
-
-  const likedBooks = likedActivities
-    .map((activity) => activity.bookId as unknown as ActivityBookSummary | null)
-    .filter((book): book is ActivityBookSummary => book != null)
-    .slice(0, 5)
-    .map((book) => ({
-      title: book.title,
-      author: book.author,
-      genre: book.genre
+  const likedBooks = recentActivity
+    .filter((activity) => activity.bookId && (activity.bookId as any).title)
+    .map((activity) => ({
+      title: (activity.bookId as any).title,
+      author: (activity.bookId as any).author,
+      genre: (activity.bookId as any).genre
     }));
-
-  console.log(`[Recommendations] Found ${likedBooks.length} liked books for context`);
-
-  const user = await User.findById(userId).select("name").lean();
 
   const explanation = await explainRecommendation({
     targetBook: {
@@ -95,38 +100,17 @@ router.get("/:bookId/explain", protect, asyncHandler(async (req, res) => {
       genre: targetBook.genre,
       tags: targetBook.tags || []
     },
-    likedBooks,
-    userName: user?.name
+    likedBooks: likedBooks.slice(0, 5),
+    userName: userId
   });
 
-  const isAI = await isGeminiAvailable();
-  console.log(`[Recommendations] Explanation generated, isAI: ${isAI}`);
+  const aiGenerated = await isGeminiAvailable();
 
   res.status(200).json({ 
     explanation, 
-    isAIGenerated: isAI,
+    isAIGenerated: aiGenerated,
     provider: "gemini" 
   });
-}));
-
-router.get("/similar/:bookId", asyncHandler(async (req, res) => {
-  const { bookId } = req.params;
-  if (!isValidObjectId(bookId)) throw new ApiError(400, "Invalid book id");
-
-  const similar = await getSimilarBooks(bookId, 6);
-  
-  const populated = await Promise.all(
-    similar.map(async (item) => {
-      const book = await Book.findById(item.bookId)
-        .select("title author coverUrl genre avgRating totalReviews")
-        .lean();
-      return { book, score: item.score };
-    })
-  );
-
-  const validSimilar = populated.filter((item) => item.book != null);
-
-  res.status(200).json({ similar: validSimilar });
 }));
 
 router.post("/refresh", protect, asyncHandler(async (req, res) => {

@@ -16,6 +16,16 @@ type AdminBookSortKey = "downloads" | "rating" | "reviews";
 type AdminListSortKey = "newest" | "downloads" | "rating";
 type AdminUserSortKey = "newest" | "active" | "streak";
 
+router.post("/stats/trigger-recommendations", asyncHandler(async (req, res) => {
+  if (req.headers["x-cron-secret"] !== process.env.CRON_SECRET) {
+    throw new ApiError(401, "Invalid cron secret");
+  }
+
+  const start = Date.now();
+  await computeRecommendations();
+  res.status(200).json({ message: "Recommendations computed", duration: Date.now() - start });
+}));
+
 router.use(protect);
 router.use(requireRole("admin"));
 
@@ -473,16 +483,6 @@ router.get("/export/users", asyncHandler(async (req, res) => {
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", `attachment; filename="elibrary-users-${new Date().toISOString().slice(0, 10)}.csv"`);
   res.status(200).send(csvRows.join("\n"));
-}));
-
-router.post("/stats/trigger-recommendations", asyncHandler(async (req, res) => {
-  if (req.headers["x-cron-secret"] !== process.env.CRON_SECRET) {
-    throw new ApiError(401, "Invalid cron secret");
-  }
-
-  const start = Date.now();
-  await computeRecommendations();
-  res.status(200).json({ message: "Recommendations computed", duration: Date.now() - start });
 }));
 
 router.get("/users", asyncHandler(async (req, res) => {

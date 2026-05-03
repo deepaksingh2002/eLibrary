@@ -99,8 +99,8 @@ api.interceptors.response.use(
     }
 
     if (error instanceof AxiosError) {
-      const message = error.response?.data?.message || error.message || "An unexpected error occurred";
-      return Promise.reject(new Error(message));
+      error.message = error.response?.data?.message || error.message || "An unexpected error occurred";
+      return Promise.reject(error);
     }
 
     return Promise.reject(error);

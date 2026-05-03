@@ -37,8 +37,7 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
     },
     enabled: isHydrated && !!bookId,
     staleTime: 1000 * 60 * 60,
-    retry: 2,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    retry: 0,
   });
 
   if (!bookId) return null;
@@ -88,7 +87,7 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
           ) : isError ? (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
               <p className="text-gray-700 text-sm leading-relaxed font-medium mb-2">
-                📚 Couldn't generate AI explanation
+                📚 Could not generate AI explanation
               </p>
               <p className="text-gray-600 text-sm">
                 But this book is recommended based on your reading preferences and ratings.
