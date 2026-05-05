@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
+    "postinstall": "yarn build",
     "start": "node dist/server.js",
     "lint": "tsc --noEmit"
   },
