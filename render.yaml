@@ -5,7 +5,7 @@ services:
     rootDir: server
     plan: free
     buildCommand: npm ci && npm run build
-    startCommand: npm start
+    startCommand: node dist/server.js
     healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:
