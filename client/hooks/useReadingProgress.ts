@@ -1,8 +1,10 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useEffect } from "react";
 import api from "../lib/api";
+import { getApiErrorMessage } from "../lib/utils";
+import { useHydration } from "./useHydration";
 import { useAuthStore } from "../store/authStore";
 import { ReadingProgress } from "../types";
 import { toast } from "../components/ui/Toast";
@@ -10,12 +12,8 @@ import { toast } from "../components/ui/Toast";
 export const useReadingProgress = (bookId: string) => {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
-  const [isHydrated, setIsHydrated] = useState(false);
+  const isHydrated = useHydration();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -44,12 +42,8 @@ export const useReadingProgress = (bookId: string) => {
       queryClient.invalidateQueries({ queryKey: ["progress", bookId] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
-    onError: (error: any) => {
-      const msg =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Failed to save progress";
-      toast.error(msg);
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error) || "Failed to save progress");
     },
   });
 

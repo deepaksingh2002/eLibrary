@@ -1,8 +1,9 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
 import api from "../lib/api";
+import { getApiErrorMessage } from "../lib/utils";
+import { useHydration } from "./useHydration";
 import { useAuthStore } from "../store/authStore";
 import { Recommendation, RecommendationsResponse } from "../types";
 import { toast } from "../components/ui/Toast";
@@ -10,11 +11,7 @@ import { toast } from "../components/ui/Toast";
 export function useRecommendations() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
-  const [isHydrated, setIsHydrated] = useState(false);
-
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
+  const isHydrated = useHydration();
 
   const { data, isLoading, error } = useQuery<RecommendationsResponse>({
     queryKey: ["recommendations"],
@@ -30,12 +27,8 @@ export function useRecommendations() {
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
       toast.success("Recommendations updated!");
     },
-    onError: (error: any) => {
-      const msg =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Could not refresh. Please try again later.";
-      toast.error(msg);
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error) || "Could not refresh. Please try again later.");
     },
   });
 

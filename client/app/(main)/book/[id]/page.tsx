@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
 import BookDetailClient from "./_BookDetailClient";
-import { getApiBaseUrl } from "../../../../lib/apiBaseUrl";
-
-const API_URL = getApiBaseUrl();
 
 interface Props {
   params: { id: string };
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   try {
     const res = await fetch(
       `${API_URL}/api/books/${params.id}`,

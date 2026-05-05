@@ -8,6 +8,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area
 } from "recharts";
 import api from "../../../lib/api";
+import { downloadBlob, getApiErrorMessage } from "../../../lib/utils";
 import { KPIStats, TrendPoint, GenreDistributionItem, GrowthPoint, AdminBook } from "../../../types";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
 import { toast } from "../../../components/ui/Toast";
@@ -64,20 +65,11 @@ export default function AdminDashboardPage() {
       const filename = filenameMatch?.[1] || fallbackName;
 
       const blob = new Blob([response.data], { type: "text/csv;charset=utf-8" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      link.style.display = "none";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      downloadBlob(blob, filename);
 
       toast.success(`${type === "books" ? "Books" : "Users"} CSV exported`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "CSV export failed";
-      toast.error(message);
+      toast.error(getApiErrorMessage(error));
     } finally {
       setExporting(null);
     }

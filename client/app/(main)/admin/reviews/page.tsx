@@ -3,6 +3,7 @@
 import React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../../../../lib/api";
+import { buildPageNumbers, getApiErrorMessage } from "../../../../lib/utils";
 import { ProtectedRoute } from "../../../../components/ProtectedRoute";
 import { Button } from "../../../../components/ui/Button";
 import { StarRating } from "../../../../components/ui/StarRating";
@@ -29,22 +30,6 @@ interface FlaggedReviewResponse {
   page: number;
   totalPages: number;
 }
-
-const buildPageNumbers = (currentPage: number, totalPages: number) => {
-  if (totalPages <= 1) return [1];
-
-  const pages = new Set<number>();
-  pages.add(1);
-  pages.add(totalPages);
-
-  for (let index = currentPage - 2; index <= currentPage + 2; index += 1) {
-    if (index > 1 && index < totalPages) {
-      pages.add(index);
-    }
-  }
-
-  return Array.from(pages).sort((a, b) => a - b);
-};
 
 const truncate = (value?: string, max = 100) => {
   if (!value) return "No body provided";
@@ -73,7 +58,7 @@ export default function AdminReviewsPage() {
       queryClient.invalidateQueries({ queryKey: ["flagged-reviews"] });
     },
     onError: (error) => {
-      toast.error(typeof error === "string" ? error : "Failed to update review");
+      toast.error(getApiErrorMessage(error));
     },
   });
 
