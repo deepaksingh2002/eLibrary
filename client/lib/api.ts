@@ -1,7 +1,8 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "../store/authStore";
+import { getApiBaseUrl } from "./apiBaseUrl";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_URL = getApiBaseUrl();
 
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
