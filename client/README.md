@@ -35,4 +35,4 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
-For this project, set `NEXT_PUBLIC_API_URL` in Vercel to your Railway backend URL if you want the frontend to call the API directly. If you prefer the `/api` rewrite in `vercel.json`, replace the placeholder destination with the real Railway URL before deploying.
+For this project, set `NEXT_PUBLIC_API_URL` in Vercel to your Railway backend URL before deploying so all API calls resolve to your backend in production.
