@@ -4,8 +4,8 @@ services:
     runtime: node
     rootDir: server
     plan: free
-    buildCommand: npm ci && npm run build
-    startCommand: npm start
+    buildCommand: yarn install && yarn build
+    startCommand: node dist/server.js
     healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:

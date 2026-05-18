@@ -7,6 +7,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area
 } from "recharts";
 import { api } from "../../../store/services/api";
+import { getApiErrorMessage } from "../../../lib/utils";
 import { KPIStats, TrendPoint, GenreDistributionItem, GrowthPoint, AdminBook } from "../../../types";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
 import { toast } from "../../../components/ui/Toast";
@@ -66,8 +67,7 @@ export default function AdminDashboardPage() {
 
       toast.success(`${type === "books" ? "Books" : "Users"} CSV exported`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "CSV export failed";
-      toast.error(message);
+      toast.error(getApiErrorMessage(error));
     } finally {
       setExporting(null);
     }

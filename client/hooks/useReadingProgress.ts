@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useHydration } from "./useHydration";
+import { useEffect, useRef } from "react";
 import { useAuthStore } from "../store/authStore";
 import { ReadingProgress } from "../types";
 import { toast } from "../components/ui/Toast";
@@ -14,12 +15,8 @@ import {
 
 export const useReadingProgress = (bookId: string) => {
   const { user } = useAuthStore();
-  const [isHydrated, setIsHydrated] = useState(false);
+  const isHydrated = useHydration();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
 
   useEffect(() => {
     return () => {

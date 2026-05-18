@@ -3,8 +3,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { User } from "../types";
+import { getApiBaseUrl } from "../lib/apiBaseUrl";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_URL = getApiBaseUrl();
 
 interface AuthState {
   user: User | null;

@@ -3,6 +3,7 @@
 import React from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { buildPageNumbers } from "../../../lib/utils";
 import type { AutocompleteSuggestion, SearchResult } from "../../../types";
 import { BookCard } from "../../../components/BookCard";
 import { Badge } from "../../../components/ui/Badge";
@@ -61,22 +62,6 @@ function BookCardSkeleton() {
       <Skeleton className="mt-3 h-5 w-20 rounded-full" />
     </div>
   );
-}
-
-function buildPageNumbers(currentPage: number, totalPages: number) {
-  if (totalPages <= 1) return [1];
-
-  const pages = new Set<number>();
-  pages.add(1);
-  pages.add(totalPages);
-
-  for (let index = currentPage - 2; index <= currentPage + 2; index += 1) {
-    if (index > 1 && index < totalPages) {
-      pages.add(index);
-    }
-  }
-
-  return Array.from(pages).sort((a, b) => a - b);
 }
 
 function SearchPageContent() {

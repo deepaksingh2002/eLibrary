@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useHydration } from "./useHydration";
+import { useEffect, useState } from "react";
 import { useAuthStore } from "../store/authStore";
 import { Recommendation } from "../types";
 import { toast } from "../components/ui/Toast";
@@ -11,11 +12,7 @@ import {
 
 export function useRecommendations() {
   const { user } = useAuthStore();
-  const [isHydrated, setIsHydrated] = useState(false);
-
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
+  const isHydrated = useHydration();
 
   const { data, isLoading, error, refetch } = useGetRecommendationsQuery(undefined, {
     skip: !isHydrated || !user,
