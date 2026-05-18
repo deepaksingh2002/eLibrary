@@ -9,12 +9,11 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   try {
-    const res = await fetch(
-      `${API_URL}/api/books/${params.id}`,
-      { next: { revalidate: 3600 } }
-    );
-    if (!res.ok) throw new Error("Not found");
-    const data = await res.json();
+    const response = await fetch(`${API_URL}/api/books/${params.id}`, {
+      next: { revalidate: 3600 },
+    });
+    if (!response.ok) throw new Error("Not found");
+    const data = await response.json();
     const book = data?.book;
     return {
       title: book ? `${book.title} by ${book.author}` : "Book Details",
