@@ -153,14 +153,19 @@ export async function summarizePdfBook(params: {
 
     const model = genAI.getGenerativeModel({
       model: "gemini-2.0-flash",
+      tools: [
+        {
+          googleSearch: {}
+        }
+      ] as any,
       generationConfig: {
-        maxOutputTokens: 700,
+        maxOutputTokens: 800,
         temperature: 0.3,
         topP: 0.9
       }
     })
 
-    const prompt = `Summarize this PDF book for an eLibrary reader.
+    const prompt = `Summarize this PDF book for an eLibrary reader. Additionally, use Google Search to analyze global readers' comments and reviews about this book from the internet, and provide a short summary of what readers generally think about it.
 Book metadata:
 Title: ${params.title}
 Author: ${params.author}
@@ -169,8 +174,8 @@ Tags: ${(params.tags || []).join(", ") || "none"}
 
 Return valid JSON only with this shape:
 {
-  "summary": "A clear 2 to 4 paragraph summary of the PDF content.",
-  "keyPoints": ["5 concise bullet points about the most important ideas"]
+  "summary": "A clear 2 to 4 paragraph summary incorporating the PDF content and an analysis of global reader comments and reviews.",
+  "keyPoints": ["5 concise bullet points about the most important ideas and reader sentiments"]
 }
 
 Do not use markdown fences.`
