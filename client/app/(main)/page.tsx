@@ -3,14 +3,13 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import api from "../../lib/api";
 import { PaginatedBooks, ReadingProgress, Book } from "../../types";
 import { BookCard } from "../../components/BookCard";
 import { Spinner } from "../../components/ui/Spinner";
 import { useAuthStore } from "../../store/authStore";
 import { RecommendationsShelf } from "../../components/RecommendationsShelf";
 import Image from "next/image";
+import { useGetBooksQuery, useGetDashboardQuery } from "../../store/services/api";
 
 const ContinueReadingCard = ({ progressItem }: { progressItem: ReadingProgress & { bookId: Book } }) => {
   const { bookId: book, progress } = progressItem;
@@ -40,23 +39,16 @@ export default function HomePage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data, isLoading, isError, error } = useQuery<PaginatedBooks>({
-    queryKey: ["books"],
-    queryFn: async () => {
-      const res = await api.get("/api/books?page=1&limit=12&status=published");
-      return res.data;
-    },
-    staleTime: 1000 * 60 * 5,
-  });
+  const { data, isLoading, isError, error } = useGetBooksQuery({ page: 1, limit: 12, status: "published" }) as {
+    data?: PaginatedBooks;
+    isLoading: boolean;
+    isError: boolean;
+    error: unknown;
+  };
 
   const { user } = useAuthStore();
 
-  const { data: dashData } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: () => api.get("/api/users/me/dashboard").then(r => r.data),
-    enabled: !!user,
-    staleTime: 1000 * 60 * 5
-  });
+  const { data: dashData } = useGetDashboardQuery(undefined, { skip: !user });
   const continueReading: Array<ReadingProgress & { bookId: Book }> = dashData?.continueReading ?? [];
 
   const handleSearch = (event: React.FormEvent) => {
