@@ -68,11 +68,14 @@ export async function computeColdStartForUser(userId: string): Promise<void> {
 }
 
 export async function computeRecommendations(): Promise<void> {
-  const startTime = Date.now();
-  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const startTime = Date.now()
+  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+  
+  // Use lean() for read-only data to improve performance
   const activities = await UserActivity.find({ createdAt: { $gte: since } })
     .select("userId bookId eventType rating")
-    .lean();
+    .lean()
+    .exec()
 
   const eventWeights: Record<string, number> = {
     view: 1,
