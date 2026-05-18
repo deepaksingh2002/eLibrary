@@ -3,7 +3,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { User } from "../types";
-import axios from "axios";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -11,9 +10,11 @@ interface AuthState {
   user: User | null;
   accessToken: string | null;
   isAuthenticated: boolean;
+  hasHydrated: boolean;
   setAuth: (user: User, accessToken: string) => void;
   logout: () => void;
   updateToken: (accessToken: string) => void;
+  finishHydration: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -22,31 +23,35 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       accessToken: null,
       isAuthenticated: false,
+      hasHydrated: false,
       setAuth: (user, accessToken) =>
-        set({ user, accessToken, isAuthenticated: true }),
+        set({ user, accessToken, isAuthenticated: true, hasHydrated: true }),
       logout: () => {
-        set({ user: null, accessToken: null, isAuthenticated: false });
-        // Use plain axios to avoid circular dependency with api.ts
-        axios
-          .post(
-            `${API_URL}/api/auth/logout`,
-            {},
-            { withCredentials: true }
-          )
-          .catch(() => {});
+        set({ user: null, accessToken: null, isAuthenticated: false, hasHydrated: true });
+        fetch(`${API_URL}/api/auth/logout`, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }).catch(() => {});
       },
-      updateToken: (accessToken) => set({ accessToken }),
+      updateToken: (accessToken) => set({ accessToken, isAuthenticated: true }),
+      finishHydration: () =>
+        set((state) => ({
+          isAuthenticated: !!state.user && !!state.accessToken,
+          hasHydrated: true,
+        })),
     }),
     {
       name: "elibrary-auth",
-      // Only persist user — accessToken stays in memory only (never persisted)
-      partialize: (state) => ({ user: state.user }),
-      // Rehydrate: derive isAuthenticated from the stored user value
+      partialize: (state) => ({
+        user: state.user,
+        accessToken: state.accessToken,
+        isAuthenticated: state.isAuthenticated,
+      }),
       onRehydrateStorage: () => (state) => {
-        if (state) {
-          state.isAuthenticated = !!state.user;
-          state.accessToken = null; // always reset on boot
-        }
+        state?.finishHydration();
       },
     }
   )
