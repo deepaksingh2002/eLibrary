@@ -6,10 +6,11 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import api from "../../../lib/api";
 import { useAuthStore } from "../../../store/authStore";
 import { Input } from "../../../components/ui/Input";
 import { Button } from "../../../components/ui/Button";
+import { useRegisterMutation } from "../../../store/services/api";
+import { getApiErrorMessage } from "../../../lib/getApiErrorMessage";
 
 const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -27,6 +28,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const { setAuth } = useAuthStore();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [registerUser, registerState] = useRegisterMutation();
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -38,12 +40,11 @@ export default function RegisterPage() {
       // Exclude confirmPassword
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { confirmPassword, ...submitData } = data;
-      const response = await api.post("/api/auth/register", submitData);
-      const { user, accessToken } = response.data;
+      const { user, accessToken } = await registerUser(submitData).unwrap();
       setAuth(user, accessToken);
       router.push("/");
     } catch (error: unknown) {
-      setServerError(typeof error === "string" ? error : (error as Error).message || "Registration failed");
+      setServerError(getApiErrorMessage(error, "Registration failed"));
     }
   };
 
@@ -97,7 +98,7 @@ export default function RegisterPage() {
         )}
 
         <div>
-          <Button type="submit" className="w-full" isLoading={isSubmitting}>
+          <Button type="submit" className="w-full" isLoading={isSubmitting || registerState.isLoading}>
             Sign up
           </Button>
         </div>
