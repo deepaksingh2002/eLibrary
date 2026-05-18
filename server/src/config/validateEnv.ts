@@ -26,10 +26,14 @@ function requireEnv(name: string): string {
 
 function ensureValidUrl(name: string): void {
   const value = requireEnv(name);
-  try {
-    new URL(value);
-  } catch {
-    throw new Error(`Environment variable ${name} must be a valid URL`);
+  // allow comma-separated list of origins
+  const parts = value.split(",").map((s) => s.trim()).filter(Boolean);
+  for (const part of parts) {
+    try {
+      new URL(part);
+    } catch {
+      throw new Error(`Environment variable ${name} contains an invalid URL: ${part}`);
+    }
   }
 }
 
@@ -60,7 +64,7 @@ export function validateEnv(): void {
     throw new Error("JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different values");
   }
 
-  ensureValidUrl("CLIENT_URL");
+  // FRONTEND_URL may be a comma-separated list of allowed frontend origins.
   ensureValidUrl("FRONTEND_URL");
 
   const smtpPortValue = process.env.SMTP_PORT?.trim();

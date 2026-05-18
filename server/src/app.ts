@@ -43,11 +43,16 @@ app.use(helmet({
   }
 }));
 
-const allowedOrigins = [
-  process.env.CLIENT_URL,
-  process.env.FRONTEND_URL,
-  "http://localhost:3000"
-].filter(Boolean) as string[];
+// Build allowed origins from FRONTEND_URL (comma-separated) and optional CLIENT_URL for backwards compatibility
+const rawOrigins = [process.env.FRONTEND_URL, process.env.CLIENT_URL]
+  .filter(Boolean)
+  .join(",");
+
+const allowedOrigins = rawOrigins
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .concat(["http://localhost:3000"]);
 
 app.use(cors({
   origin: (origin, callback) => {
