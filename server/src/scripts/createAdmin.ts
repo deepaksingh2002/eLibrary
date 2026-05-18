@@ -22,7 +22,8 @@ async function createAdmin() {
   await mongoose.connect(mongoUri);
 
   try {
-    const existingUser = await User.findOne({ email }).select("+passwordHash");
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingUser = await User.findOne({ email: normalizedEmail }).select("+passwordHash");
 
     if (existingUser) {
       existingUser.name = name;
@@ -32,18 +33,18 @@ async function createAdmin() {
       existingUser.refreshTokens = [];
       await existingUser.save();
 
-      console.log(`Updated existing user as admin: ${email}`);
+      console.log(`Updated existing user as admin: ${normalizedEmail}`);
       return;
     }
 
     await User.create({
       name,
-      email,
+      email: normalizedEmail,
       passwordHash: password,
       role: "admin",
     });
 
-    console.log(`Created admin user: ${email}`);
+    console.log(`Created admin user: ${normalizedEmail}`);
   } finally {
     await mongoose.disconnect();
   }
