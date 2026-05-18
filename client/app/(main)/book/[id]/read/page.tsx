@@ -2,11 +2,17 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist/types/src/display/api";
-import api from "../../../../../lib/api";
+import {
+  useGetBookQuery,
+  useGetReadingProgressQuery,
+  useDownloadBookMutation,
+  useUpdateReadingProgressMutation,
+} from "../../../../../store/services/api";
 import { useAuthStore } from "../../../../../store/authStore";
 import { Spinner } from "../../../../../components/ui/Spinner";
+import AIStudyPanel from "../../../../../components/reader/AIStudyPanel";
+import { getApiErrorMessage } from "../../../../../lib/getApiErrorMessage";
 
 function isRenderingCancelled(error: unknown): boolean {
   return typeof error === "object" && error !== null && "name" in error && error.name === "RenderingCancelledException";
@@ -15,9 +21,10 @@ function isRenderingCancelled(error: unknown): boolean {
 export default function ReadPage() {
   const params = useParams();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const id = params.id as string;
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, hasHydrated } = useAuthStore();
+  const [downloadBook] = useDownloadBookMutation();
+  const [updateReadingProgress] = useUpdateReadingProgressMutation();
 
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -25,26 +32,22 @@ export default function ReadPage() {
   const [scale, setScale] = useState(1.2);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isPdfUnavailable, setIsPdfUnavailable] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [showHint, setShowHint] = useState(true);
   const [pageInputValue, setPageInputValue] = useState("1");
-  const [isHydrated, setIsHydrated] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Track hydration state
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
+  const savedProgressRef = useRef(0);
 
   // Redirect if not authenticated
   useEffect(() => {
-    if (isHydrated && !isAuthenticated) {
+    if (hasHydrated && !isAuthenticated) {
       router.push(`/login?returnUrl=/book/${id}/read`);
     }
-  }, [isHydrated, isAuthenticated, id, router]);
+  }, [hasHydrated, isAuthenticated, id, router]);
 
   // Auto-dismiss keyboard hint
   useEffect(() => {
@@ -53,33 +56,33 @@ export default function ReadPage() {
   }, []);
 
   // Fetch book info
-  const { data: book } = useQuery({
-    queryKey: ["book", id],
-    queryFn: () => api.get(`/api/books/${id}`).then((r) => r.data.book),
-    enabled: !!id,
-    staleTime: 1000 * 60 * 10,
-  });
+  const { data: bookData } = useGetBookQuery(id, { skip: !id });
+  const book = bookData?.book;
 
   // Fetch saved progress (wait for hydration before enabling)
-  const { data: progressData } = useQuery({
-    queryKey: ["progress", id],
-    queryFn: () => api.get(`/api/progress/${id}`).then((r) => r.data.progress),
-    enabled: isHydrated && !!id && isAuthenticated,
-    staleTime: 1000 * 60 * 5,
+  const { data: progressData, isLoading: isProgressLoading } = useGetReadingProgressQuery(id, {
+    skip: !hasHydrated || !id || !isAuthenticated,
   });
 
-  // Download URL is fetched on-demand when loading PDF, not on page load
+  useEffect(() => {
+    if (typeof progressData?.progress === "number") {
+      savedProgressRef.current = progressData.progress;
+    }
+  }, [progressData?.progress]);
 
   // Load PDF document
   useEffect(() => {
+    if (!hasHydrated || !isAuthenticated || !id || isProgressLoading) return;
+
+    let isActive = true;
     setIsLoading(true);
     setLoadError(null);
+    setIsPdfUnavailable(false);
 
     const loadPDF = async () => {
       try {
-        // Fetch download URL (signed URL to Cloudinary PDF)
-        const downloadRes = await api.post(`/api/books/${id}/download`);
-        const downloadUrl = downloadRes.data?.downloadUrl;
+        const downloadRes = await downloadBook(id).unwrap();
+        const downloadUrl = downloadRes?.downloadUrl;
         
         if (!downloadUrl) {
           throw new Error("Failed to get download URL");
@@ -95,31 +98,44 @@ export default function ReadPage() {
         });
 
         const doc = await loadingTask.promise;
+        if (!isActive) {
+          await doc.destroy();
+          return;
+        }
+
         setPdfDoc(doc);
         setTotalPages(doc.numPages);
 
         // Restore saved progress
-        console.log(`[Progress] Loaded - progress=${progressData?.progress}%, totalPages=${doc.numPages}`);
-        if (progressData?.progress > 0 && progressData.progress < 100) {
-          const savedPage = Math.ceil((progressData.progress / 100) * doc.numPages);
-          console.log(`[Progress] Restoring to page ${savedPage}`);
-          setCurrentPage(savedPage);
-          setPageInputValue(String(savedPage));
+        const savedProgress = savedProgressRef.current;
+        if (savedProgress > 0 && savedProgress < 100) {
+          const savedPage = Math.ceil((savedProgress / 100) * doc.numPages)
+          setCurrentPage(savedPage)
+          setPageInputValue(String(savedPage))
         } else {
-          console.log(`[Progress] Starting from page 1`);
-          setCurrentPage(1);
-          setPageInputValue("1");
+          setCurrentPage(1)
+          setPageInputValue("1")
         }
       } catch (err: unknown) {
         console.error("[PDF] Load error:", err);
-        setLoadError("Failed to load PDF. Please try again.");
+        const message = getApiErrorMessage(err, "");
+
+        if (message.includes("PDF not available for this book")) {
+          setIsPdfUnavailable(true);
+          setLoadError(null);
+        } else {
+          setLoadError("Failed to load PDF. Please try again.");
+        }
       } finally {
-        setIsLoading(false);
+        if (isActive) setIsLoading(false);
       }
     };
 
     loadPDF();
-  }, [id, progressData]);
+    return () => {
+      isActive = false;
+    };
+  }, [id, hasHydrated, isAuthenticated, isProgressLoading, downloadBook]);
 
   // Render page
   const renderPage = useCallback(
@@ -149,7 +165,6 @@ export default function ReadPage() {
         await renderTaskRef.current.promise;
       } catch (err: unknown) {
         if (!isRenderingCancelled(err)) {
-          console.error("[PDF] Render error:", err);
         }
       } finally {
         setIsRendering(false);
@@ -164,31 +179,26 @@ export default function ReadPage() {
 
   // Sync progress with debounce
   useEffect(() => {
-    if (!totalPages || !isHydrated) return;
+    if (!totalPages || !hasHydrated || !isAuthenticated) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       const newProgress = Math.round((currentPage / totalPages) * 100);
-      console.log(`[Progress] Syncing - Page ${currentPage}/${totalPages} = ${newProgress}%`);
       try {
-        const response = await api.patch(`/api/progress/${id}`, { 
-          progress: newProgress, 
-          sessionMinutes: 0 
-        });
-        console.log(`[Progress] Successfully saved:`, response.data);
-        // Invalidate progress query so detail page refetches latest progress
-        console.log(`[Progress] Invalidating query for detail page`);
-        queryClient.invalidateQueries({ queryKey: ["progress", id] });
-        console.log(`[Progress] Query invalidated`);
-      } catch (error) {
-        console.error(`[Progress] Failed to save:`, error);
+        await updateReadingProgress({
+          bookId: id,
+          body: {
+            progress: newProgress,
+            sessionMinutes: 0,
+          },
+        }).unwrap();
+      } catch {
       }
     }, 2000);
-
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [currentPage, totalPages, id, isHydrated, queryClient]);
+  }, [currentPage, totalPages, id, hasHydrated, isAuthenticated, updateReadingProgress]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -228,6 +238,14 @@ export default function ReadPage() {
   };
 
   const progressPercent = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
+
+  if (!hasHydrated) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-900">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) return null;
 
@@ -336,8 +354,34 @@ export default function ReadPage() {
           </div>
         )}
 
+        {/* PDF unavailable state */}
+        {isPdfUnavailable && !isLoading && book && (
+          <div className="flex flex-col items-center justify-center gap-4 py-20 text-center px-6 max-w-xl mx-auto">
+            <div className="text-5xl">📚</div>
+            <h2 className="text-2xl font-bold text-white">Reading not available yet</h2>
+            <p className="text-gray-300 text-sm leading-6">
+              This book is in the library, but a PDF has not been uploaded yet.
+              You can still view the book details page, or come back after an admin uploads the file.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => router.push(`/book/${id}`)}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+              >
+                View Book Details
+              </button>
+              <button
+                onClick={() => router.back()}
+                className="rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-gray-200 transition-colors hover:bg-white/10"
+              >
+                Go Back
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Error state */}
-        {loadError && !isLoading && (
+        {loadError && !isLoading && !isPdfUnavailable && (
           <div className="flex flex-col items-center justify-center gap-4 py-20 text-center px-6">
             <div className="text-5xl">📄</div>
             <p className="text-red-400 font-medium">{loadError}</p>
@@ -351,7 +395,7 @@ export default function ReadPage() {
         )}
 
         {/* PDF Canvas */}
-        <div className={`py-6 px-4 ${isLoading || loadError ? "hidden" : ""}`}>
+        <div className={`py-6 px-4 ${isLoading || loadError || isPdfUnavailable ? "hidden" : ""}`}>
           <canvas
             ref={canvasRef}
             className="block mx-auto shadow-2xl"
@@ -359,6 +403,11 @@ export default function ReadPage() {
           />
         </div>
       </main>
+
+      {/* ADD: AI Study Panel (floating button + panel) */}
+      {book && (
+        <AIStudyPanel bookId={id} bookTitle={book.title || ""} />
+      )}
 
       {/* Keyboard hint toast */}
       {showHint && (
