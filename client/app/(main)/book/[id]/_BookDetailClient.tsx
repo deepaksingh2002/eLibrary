@@ -4,8 +4,6 @@ import React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import api from "../../../../lib/api";
 import { Book, PaginatedReviews, ReviewDistribution } from "../../../../types";
 import { Spinner } from "../../../../components/ui/Spinner";
 import { Badge } from "../../../../components/ui/Badge";
@@ -20,6 +18,14 @@ import { ProgressSlider } from "../../../../components/ProgressSlider";
 import { BookmarksPanel } from "../../../../components/BookmarksPanel";
 import { SimilarBooksPanel } from "../../../../components/SimilarBooksPanel";
 import { AIExplanationModal } from "../../../../components/AIExplanationModal";
+import {
+  useGetBookQuery,
+  useGetBookReviewsQuery,
+  useGetReviewDistributionQuery,
+  useGetReadingProgressQuery,
+  useGetMyReviewsQuery,
+  useDownloadBookMutation,
+} from "../../../../store/services/api";
 
 interface MyReviewItem {
   _id: string;
@@ -29,73 +35,48 @@ interface MyReviewItem {
 export default function BookDetailClient() {
   const params = useParams();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const id = params.id as string;
   const { isAuthenticated, user } = useAuthStore();
   const [reviewsPage, setReviewsPage] = React.useState(1);
   const [reviewsSort, setReviewsSort] = React.useState("helpful");
   const [isHydrated, setIsHydrated] = React.useState(false);
   const [showAIExplanation, setShowAIExplanation] = React.useState(false);
+  const [downloadBook, downloadState] = useDownloadBookMutation();
 
   // Track hydration state
   React.useEffect(() => {
     setIsHydrated(true);
   }, []);
 
-  const { data: book, isLoading, isError, error } = useQuery<Book>({
-    queryKey: ["book", id],
-    queryFn: async () => {
-      const res = await api.get(`/api/books/${id}`);
-      return res.data.book;
-    },
-    enabled: !!id,
-    staleTime: 1000 * 60 * 10,
-  });
+  const { data: bookData, isLoading, isError, error } = useGetBookQuery(id, { skip: !id }) as {
+    data?: { book: Book };
+    isLoading: boolean;
+    isError: boolean;
+    error: unknown;
+  };
+  const book = bookData?.book;
 
-  const {
-    data: reviewsData,
-    isLoading: isReviewsLoading,
-    isError: isReviewsError,
-    refetch: refetchReviews,
-  } = useQuery<PaginatedReviews>({
-    queryKey: ["reviews", id, reviewsPage, reviewsSort],
-    queryFn: async () => {
-      const response = await api.get(`/api/reviews/book/${id}?page=${reviewsPage}&sort=${reviewsSort}&limit=10`);
-      return response.data;
-    },
-    enabled: !!id,
-  });
+  const { data: reviewsData, isLoading: isReviewsLoading, isError: isReviewsError, refetch: refetchReviews } =
+    useGetBookReviewsQuery({ bookId: id, page: reviewsPage, sort: reviewsSort }, { skip: !id }) as {
+      data?: PaginatedReviews;
+      isLoading: boolean;
+      isError: boolean;
+      refetch: () => void;
+    };
 
-  const { data: distributionData } = useQuery<ReviewDistribution>({
-    queryKey: ["reviews-distribution", id],
-    queryFn: async () => {
-      const response = await api.get(`/api/reviews/book/${id}/distribution`);
-      return response.data;
-    },
-    enabled: !!id,
-  });
+  const { data: distributionData } = useGetReviewDistributionQuery(id, { skip: !id }) as {
+    data?: ReviewDistribution;
+  };
 
-  const { data: progressData } = useQuery({
-    queryKey: ["progress", id],
-    queryFn: async () => {
-      console.log(`[DetailPage] Fetching progress for book ${id}`);
-      const response = await api.get(`/api/progress/${id}`);
-      console.log(`[DetailPage] Progress fetched:`, response.data);
-      return response.data.progress;
-    },
-    enabled: isHydrated && !!id && !!user,
-    staleTime: 1000 * 30,
-    refetchOnWindowFocus: true,
-  });
+  const { data: progressData } = useGetReadingProgressQuery(id, {
+    skip: !(isHydrated && !!id && !!user),
+  }) as {
+    data?: { progress: number } & Record<string, unknown>;
+  };
 
-  const { data: myReviews } = useQuery<MyReviewItem[]>({
-    queryKey: ["my-reviews"],
-    queryFn: async () => {
-      const response = await api.get("/api/reviews/my");
-      return response.data;
-    },
-    enabled: !!user,
-  });
+  const { data: myReviews } = useGetMyReviewsQuery(undefined, { skip: !user }) as {
+    data?: MyReviewItem[];
+  };
 
   const hasReviewed = myReviews?.some((review) => {
     if (typeof review.bookId === "string") return review.bookId === id;
@@ -107,82 +88,53 @@ export default function BookDetailClient() {
     return review.bookId?._id === id;
   });
 
-  const downloadMutation = useMutation({
-    mutationFn: async () => {
-      try {
-        console.log(`[Download] Starting download for book: ${id}`);
-        const response = await api.post<{ downloadUrl: string; fileName: string }>(`/api/books/${id}/download`);
-        console.log(`[Download] Download URL received:`, response.data.downloadUrl?.substring(0, 80) + "...");
-        return response.data;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        console.error(`[Download] Failed to get download URL:`, message);
-        throw error;
-      }
-    },
-    onSuccess: (data) => {
-      if (!data.downloadUrl) {
-        console.error("[Download] No download URL in response");
-        toast.error("Download URL is missing. Please try again.");
-        return;
-      }
-      
-      console.log(`[Download] Opening download URL, length: ${data.downloadUrl.length}`);
-      
-      // First attempt: Use fetch to download with proper headers
-      fetch(data.downloadUrl)
-        .then(response => {
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-          return response.blob();
-        })
-        .then(blob => {
-          const url = window.URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = data.fileName || `book-${id}.pdf`;
-          link.style.display = "none";
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-          console.log("[Download] Blob download successful");
-          toast.success("Download started!");
-        })
-        .catch(err => {
-          console.warn("[Download] Blob download failed, trying window.open:", err);
-          // Fallback: Open in new tab
-          const newWindow = window.open(data.downloadUrl, "_blank", "noopener,noreferrer");
-          if (!newWindow || newWindow.closed || typeof newWindow.closed === "undefined") {
-            console.error("[Download] Both methods failed");
-            toast.error("Download failed. Please try again.");
-          } else {
-            console.log("[Download] window.open successful");
-            toast.success("Download started!");
-          }
-        });
-      
-      queryClient.invalidateQueries({ queryKey: ["book", id] });
-    },
-    onError: (error) => {
-      const message = error instanceof Error ? error.message : "Download failed. Please try again.";
-      console.error("[Download] Mutation error:", message);
-      toast.error(message);
-    },
-  });
-
   const handleDownload = () => {
     if (!isAuthenticated) {
       router.push("/login");
       return;
     }
-    downloadMutation.mutate();
+    downloadBook(id)
+      .unwrap()
+      .then((data) => {
+        if (!data.downloadUrl) {
+          toast.error("Download URL is missing. Please try again.");
+          return;
+        }
+
+        fetch(data.downloadUrl)
+          .then((response) => {
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return response.blob();
+          })
+          .then((blob) => {
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = data.fileName || `book-${id}.pdf`;
+            link.style.display = "none";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            toast.success("Download started!");
+          })
+          .catch(() => {
+            const newWindow = window.open(data.downloadUrl, "_blank", "noopener,noreferrer");
+            if (!newWindow || newWindow.closed || typeof newWindow.closed === "undefined") {
+              toast.error("Download failed. Please try again.");
+            } else {
+              toast.success("Download started!");
+            }
+          });
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "Download failed. Please try again.";
+        toast.error(message);
+      });
   };
 
   const refreshReviewData = () => {
     refetchReviews();
-    queryClient.invalidateQueries({ queryKey: ["reviews-distribution", id] });
-    queryClient.invalidateQueries({ queryKey: ["my-reviews"] });
-    queryClient.invalidateQueries({ queryKey: ["book", id] });
   };
 
   if (isLoading) {
@@ -283,12 +235,12 @@ export default function BookDetailClient() {
                   size="lg"
                   className="w-full px-8 font-semibold sm:w-auto"
                   onClick={handleDownload}
-                  disabled={downloadMutation.isPending}
+                  disabled={downloadState.isLoading}
                 >
                   <svg className="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  {downloadMutation.isPending ? "Preparing download..." : "Download PDF"}
+                  {downloadState.isLoading ? "Preparing download..." : "Download PDF"}
                 </Button>
                 <Link href={`/book/${id}/read`}>
                   <Button size="lg" variant="secondary" className="w-full font-semibold sm:w-auto">
