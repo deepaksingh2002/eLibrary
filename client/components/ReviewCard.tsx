@@ -1,13 +1,17 @@
 "use client";
 
 import React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import api from "../lib/api";
 import { Review } from "../types";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
 import { StarRating } from "./ui/StarRating";
 import { toast } from "./ui/Toast";
+import {
+  useHelpfulReviewMutation,
+  useDeleteReviewMutation,
+  useUpdateReviewMutation,
+  useFlagReviewRemoveMutation,
+} from "../store/services/api";
 
 interface ReviewCardProps {
   review: Review;
@@ -51,87 +55,20 @@ export const ReviewCard: React.FC<ReviewCardProps> = ({
   currentUserRole,
   onHelpfulToggle,
 }) => {
-  const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = React.useState(false);
   const [editRating, setEditRating] = React.useState(review.rating);
   const [editTitle, setEditTitle] = React.useState(review.title ?? "");
   const [editBody, setEditBody] = React.useState(review.body ?? "");
+  const [helpfulReview, helpfulState] = useHelpfulReviewMutation();
+  const [deleteReview, deleteState] = useDeleteReviewMutation();
+  const [updateReview, updateState] = useUpdateReviewMutation();
+  const [flagReviewRemove, flagState] = useFlagReviewRemoveMutation();
 
   React.useEffect(() => {
     setEditRating(review.rating);
     setEditTitle(review.title ?? "");
     setEditBody(review.body ?? "");
   }, [review]);
-
-  const helpfulMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.post(`/api/reviews/${review._id}/helpful`);
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["reviews"] });
-      onHelpfulToggle();
-    },
-    onError: (error) => {
-      toast.error(typeof error === "string" ? error : "Failed to update helpful vote");
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.delete(`/api/reviews/${review._id}`);
-      return response.data;
-    },
-    onSuccess: () => {
-      toast.success("Review deleted");
-      queryClient.invalidateQueries({ queryKey: ["reviews"] });
-      queryClient.invalidateQueries({ queryKey: ["reviews-distribution"] });
-      queryClient.invalidateQueries({ queryKey: ["my-reviews"] });
-      onHelpfulToggle();
-    },
-    onError: (error) => {
-      toast.error(typeof error === "string" ? error : "Failed to delete review");
-    },
-  });
-
-  const editMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.patch(`/api/reviews/${review._id}`, {
-        rating: editRating,
-        title: editTitle.trim() || undefined,
-        body: editBody.trim() || undefined,
-      });
-      return response.data;
-    },
-    onSuccess: () => {
-      toast.success("Review updated");
-      setIsEditing(false);
-      queryClient.invalidateQueries({ queryKey: ["reviews"] });
-      queryClient.invalidateQueries({ queryKey: ["reviews-distribution"] });
-      queryClient.invalidateQueries({ queryKey: ["my-reviews"] });
-      onHelpfulToggle();
-    },
-    onError: (error) => {
-      toast.error(typeof error === "string" ? error : "Failed to update review");
-    },
-  });
-
-  const adminRemoveMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.patch(`/api/reviews/${review._id}/flag`, { action: "remove" });
-      return response.data;
-    },
-    onSuccess: () => {
-      toast.success("Review removed");
-      queryClient.invalidateQueries({ queryKey: ["reviews"] });
-      queryClient.invalidateQueries({ queryKey: ["reviews-distribution"] });
-      queryClient.invalidateQueries({ queryKey: ["flagged-reviews"] });
-      onHelpfulToggle();
-    },
-    onError: (error) => {
-      toast.error(typeof error === "string" ? error : "Failed to remove review");
-    },
-  });
 
   const hasVoted = currentUserId ? review.voters.includes(currentUserId) : false;
   const isOwner = currentUserId === review.userId._id;
@@ -164,8 +101,26 @@ export const ReviewCard: React.FC<ReviewCardProps> = ({
           <div className="flex gap-2">
             <Button
               size="sm"
-              onClick={() => editMutation.mutate()}
-              isLoading={editMutation.isPending}
+              onClick={() => {
+                updateReview({
+                  reviewId: review._id,
+                  body: {
+                    rating: editRating,
+                    title: editTitle.trim() || undefined,
+                    body: editBody.trim() || undefined,
+                  },
+                })
+                  .unwrap()
+                  .then(() => {
+                    toast.success("Review updated");
+                    setIsEditing(false);
+                    onHelpfulToggle();
+                  })
+                  .catch((error) => {
+                    toast.error(typeof error === "string" ? error : "Failed to update review");
+                  });
+              }}
+              isLoading={updateState.isLoading}
             >
               Save
             </Button>
@@ -203,8 +158,15 @@ export const ReviewCard: React.FC<ReviewCardProps> = ({
       <div className="mt-4 flex items-center justify-between gap-4">
         <button
           type="button"
-          onClick={() => helpfulMutation.mutate()}
-          disabled={!currentUserId || helpfulMutation.isPending}
+          onClick={() => {
+            helpfulReview(review._id)
+              .unwrap()
+              .then(() => onHelpfulToggle())
+              .catch((error) => {
+                toast.error(typeof error === "string" ? error : "Failed to update helpful vote");
+              });
+          }}
+          disabled={!currentUserId || helpfulState.isLoading}
           className={`text-sm font-medium transition-colors ${
             hasVoted ? "text-blue-600" : "text-gray-500 hover:text-blue-600"
           } ${!currentUserId ? "cursor-not-allowed opacity-50" : ""}`}
@@ -224,10 +186,18 @@ export const ReviewCard: React.FC<ReviewCardProps> = ({
                 className="border-red-200 text-red-600 hover:bg-red-50"
                 onClick={() => {
                   if (window.confirm("Delete this review?")) {
-                    deleteMutation.mutate();
+                    deleteReview(review._id)
+                      .unwrap()
+                      .then(() => {
+                        toast.success("Review deleted");
+                        onHelpfulToggle();
+                      })
+                      .catch((error) => {
+                        toast.error(typeof error === "string" ? error : "Failed to delete review");
+                      });
                   }
                 }}
-                isLoading={deleteMutation.isPending}
+                isLoading={deleteState.isLoading}
               >
                 Delete
               </Button>
@@ -238,8 +208,18 @@ export const ReviewCard: React.FC<ReviewCardProps> = ({
               size="sm"
               variant="ghost"
               className="border-yellow-200 text-yellow-700 hover:bg-yellow-50"
-              onClick={() => adminRemoveMutation.mutate()}
-              isLoading={adminRemoveMutation.isPending}
+              onClick={() => {
+                flagReviewRemove(review._id)
+                  .unwrap()
+                  .then(() => {
+                    toast.success("Review removed");
+                    onHelpfulToggle();
+                  })
+                  .catch((error) => {
+                    toast.error(typeof error === "string" ? error : "Failed to remove review");
+                  });
+              }}
+              isLoading={flagState.isLoading}
             >
               Remove
             </Button>
