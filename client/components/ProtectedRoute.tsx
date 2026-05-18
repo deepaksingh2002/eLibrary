@@ -14,11 +14,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   requiredRole,
 }) => {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, hasHydrated } = useAuthStore();
   const router = useRouter();
   const [isChecking, setIsChecking] = React.useState(true);
 
   React.useEffect(() => {
+    if (!hasHydrated) return;
+
     if (!isAuthenticated) {
       router.push("/login");
     } else if (requiredRole && user?.role !== requiredRole) {
@@ -26,9 +28,9 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     } else {
       setIsChecking(false);
     }
-  }, [isAuthenticated, user, requiredRole, router]);
+  }, [hasHydrated, isAuthenticated, user, requiredRole, router]);
 
-  if (isChecking) {
+  if (!hasHydrated || isChecking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Spinner size="lg" />
