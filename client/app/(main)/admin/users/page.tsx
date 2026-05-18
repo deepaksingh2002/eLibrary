@@ -1,14 +1,15 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Image from "next/image";
 import { ProtectedRoute } from "../../../../components/ProtectedRoute";
-import { Spinner } from "../../../../components/ui/Spinner";
 import { Button } from "../../../../components/ui/Button";
 import { toast } from "../../../../components/ui/Toast";
-import { useAuthStore } from "../../../../store/authStore";
-import api from "../../../../lib/api";
+import {
+  useGetAdminUsersQuery,
+  useUpdateAdminUserRoleMutation,
+  useDeleteAdminUserMutation,
+} from "../../../../store/services/api";
 
 interface AdminUser {
   _id: string;
@@ -19,13 +20,6 @@ interface AdminUser {
   totalBooksRead: number;
   streak: number;
   createdAt: string;
-}
-
-interface UsersResponse {
-  users: AdminUser[];
-  total: number;
-  page: number;
-  totalPages: number;
 }
 
 function UserInitials({ name }: { name: string }) {
@@ -48,13 +42,11 @@ const roleBadgeClass: Record<string, string> = {
   guest: "bg-gray-100 text-gray-500",
 };
 
-export default function AdminUsersPage() {
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const { user: currentUser } = useAuthStore();
+const roleOptions = ["user", "admin", "guest"];
 
+export default function AdminUsersPage() {
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [sortBy, setSortBy] = useState("newest");
@@ -65,279 +57,418 @@ export default function AdminUsersPage() {
   // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedSearch(search);
+      setDebouncedSearch(searchInput);
       setPage(1);
     }, 400);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [searchInput]);
 
-  const { data, isLoading } = useQuery<UsersResponse>({
-    queryKey: ["admin-users", page, debouncedSearch, roleFilter, sortBy],
-    queryFn: () =>
-      api
-        .get("/api/admin/users", {
-          params: { page, limit: 20, search: debouncedSearch, role: roleFilter, sort: sortBy },
-        })
-        .then((r) => r.data),
-    staleTime: 1000 * 60 * 2,
+  const { data, isLoading, error, refetch } = useGetAdminUsersQuery({
+    page,
+    search: debouncedSearch,
+    role: roleFilter || undefined,
+    sort: sortBy,
   });
 
-  const changeRoleMutation = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: string }) =>
-      api.patch(`/api/admin/users/${id}/role`, { role }),
-    onMutate: ({ id }) => setChangingRoleId(id),
-    onSettled: () => setChangingRoleId(null),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      toast.success("Role updated");
-    },
-    onError: () => toast.error("Failed to update role"),
-  });
+  const [updateRole] = useUpdateAdminUserRoleMutation();
+  const [deleteUser, { isLoading: isDeletingUser }] =
+    useDeleteAdminUserMutation();
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/api/admin/users/${id}`),
-    onMutate: (id) => setDeletingId(id),
-    onSettled: () => {
-      setDeletingId(null);
-      setConfirmDeleteId(null);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+  const handleChangeRole = async (userId: string, newRole: string) => {
+    setChangingRoleId(userId);
+    try {
+      await updateRole({ id: userId, role: newRole }).unwrap();
+      toast.success("User role updated");
+      refetch();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update role";
+      toast.error(message);
+    } finally {
+      setChangingRoleId(null);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    setDeletingId(userId);
+    try {
+      await deleteUser(userId).unwrap();
       toast.success("User deactivated");
-    },
-    onError: () => toast.error("Failed to deactivate user"),
-  });
+      setConfirmDeleteId(null);
+      refetch();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete user";
+      toast.error(message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const users: AdminUser[] = data?.users || [];
+  const totalPages = data?.totalPages || 1;
+
+  const buildPageNumbers = (currentPage: number, totalPages: number) => {
+    if (totalPages <= 1) return [1];
+    const pages = new Set<number>();
+    pages.add(1);
+    pages.add(totalPages);
+    for (let i = currentPage - 2; i <= currentPage + 2; i++) {
+      if (i > 1 && i < totalPages) pages.add(i);
+    }
+    return Array.from(pages).sort((a, b) => a - b);
+  };
+
+  const pageNumbers = buildPageNumbers(page, totalPages);
 
   return (
     <ProtectedRoute requiredRole="admin">
-      <main className="flex-1 p-6 md:p-8 overflow-auto">
+      <div className="space-y-6 px-4 py-8 lg:py-10">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
-          <p className="text-sm text-gray-400 mt-1">
-            {data?.total ?? 0} total users
-          </p>
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              {data?.total || 0} total users
+            </p>
+          </div>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col md:flex-row gap-3 mb-6">
-          <input
-            type="text"
-            placeholder="Search name or email…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 rounded-xl border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+        <div className="flex flex-col gap-4 sm:flex-row">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              placeholder="Search by name or email..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 py-2 pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
+            <svg
+              className="absolute left-3 top-2.5 h-5 w-5 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
+
           <select
             value={roleFilter}
-            onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
-            className="rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            onChange={(e) => {
+              setRoleFilter(e.target.value);
+              setPage(1);
+            }}
+            className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="">All Roles</option>
-            <option value="admin">Admin</option>
-            <option value="user">User</option>
-            <option value="guest">Guest</option>
+            {roleOptions.map((role) => (
+              <option key={role} value={role}>
+                {role.charAt(0).toUpperCase() + role.slice(1)}
+              </option>
+            ))}
           </select>
+
           <select
             value={sortBy}
-            onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
-            className="rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            onChange={(e) => {
+              setSortBy(e.target.value);
+              setPage(1);
+            }}
+            className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
-            <option value="newest">Newest</option>
-            <option value="active">Most Active</option>
-            <option value="streak">Highest Streak</option>
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="name">Name A-Z</option>
           </select>
         </div>
 
-        {/* Table */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          {/* Desktop table header */}
-          <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-4 px-6 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-            <span>User</span>
-            <span>Role</span>
-            <span>Books Read</span>
-            <span>Streak</span>
-            <span>Joined</span>
-            <span>Actions</span>
+        {/* Content */}
+        {isLoading ? (
+          <div className="flex items-center justify-center rounded-2xl border border-gray-100 bg-white py-16">
+            <div className="text-center">
+              <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" />
+              <p className="text-sm text-gray-500">Loading users...</p>
+            </div>
           </div>
-
-            {isLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Spinner size="lg" />
-              </div>
-            ) : !data?.users?.length ? (
-              <div className="text-center py-16 text-gray-400 text-sm">No users found</div>
-            ) : (
-              <div>
-                {data.users.map((u) => (
-                  <div
-                    key={u._id}
-                    className="border-b border-gray-100 last:border-0"
-                  >
-                    {/* Desktop row */}
-                    <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-4 px-6 py-4 items-center hover:bg-gray-50 transition-colors">
-                      {/* User */}
-                      <div className="flex items-center gap-3 min-w-0">
-                        <UserInitials name={u.name} />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{u.name}</p>
-                          <p className="text-xs text-gray-400 truncate">{u.email}</p>
-                        </div>
-                      </div>
-
-                      {/* Role */}
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${roleBadgeClass[u.role]}`}>
-                          {u.role}
-                        </span>
-                        <select
-                          value={u.role}
-                          disabled={changingRoleId === u._id || u._id === currentUser?.id}
-                          onChange={(e) => changeRoleMutation.mutate({ id: u._id, role: e.target.value })}
-                          className="text-xs border border-gray-200 rounded-lg px-1 py-0.5 bg-transparent focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-40 cursor-pointer"
-                        >
-                          <option value="user">User</option>
-                          <option value="admin">Admin</option>
-                          <option value="guest">Guest</option>
-                        </select>
-                        {changingRoleId === u._id && (
-                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-                        )}
-                      </div>
-
-                      {/* Books read */}
-                      <span className="text-sm text-gray-600">{u.totalBooksRead ?? 0}</span>
-
-                      {/* Streak */}
-                      <span className={`text-sm ${u.streak > 0 ? "text-orange-500" : "text-gray-300"}`}>
-                        {u.streak > 0 ? `🔥 ${u.streak}` : "—"}
-                      </span>
-
-                      {/* Joined */}
-                      <span className="text-xs text-gray-400">
-                        {new Date(u.createdAt).toLocaleDateString("en", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </span>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <button
-                          onClick={() => router.push(`/admin/users/${u._id}/activity`)}
-                          className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
-                        >
-                          Activity
-                        </button>
-
-                        {confirmDeleteId === u._id ? (
-                          <span className="flex items-center gap-1">
-                            <span className="text-xs text-red-600">Sure?</span>
-                            <button
-                              onClick={() => deleteMutation.mutate(u._id)}
-                              disabled={deletingId === u._id}
-                              className="text-xs text-red-600 font-semibold hover:text-red-800 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-40"
-                            >
-                              {deletingId === u._id ? (
-                                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-red-500 border-t-transparent" />
-                              ) : (
-                                "Yes"
-                              )}
-                            </button>
-                            <button
-                              onClick={() => setConfirmDeleteId(null)}
-                              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
-                            >
-                              No
-                            </button>
-                          </span>
-                        ) : (
+        ) : error ? (
+          <div className="rounded-2xl border border-red-100 bg-red-50 p-8 text-center">
+            <p className="text-sm text-red-600 font-medium mb-4">Failed to load users</p>
+            <Button onClick={() => refetch()} className="bg-red-600 hover:bg-red-700">
+              Retry
+            </Button>
+          </div>
+        ) : users.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center">
+            <svg
+              className="mx-auto h-12 w-12 text-gray-400 mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0zM6 20h12a6 6 0 00-6-6 6 6 0 00-6 6z"
+              />
+            </svg>
+            <p className="text-lg font-medium text-gray-900">No users found</p>
+            <p className="mt-1 text-sm text-gray-500">Try adjusting your search criteria</p>
+          </div>
+        ) : (
+          <>
+            {/* Desktop Table */}
+            <div className="hidden overflow-hidden rounded-2xl border border-gray-100 bg-white md:block">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        User
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Email
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Role
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Books Read
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Streak
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Joined
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {users.map((user) => (
+                      <tr
+                        key={user._id}
+                        className="hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            {user.avatar ? (
+                              <Image
+                                src={user.avatar}
+                                alt={user.name}
+                                width={40}
+                                height={40}
+                                className="h-10 w-10 rounded-full object-cover"
+                              />
+                            ) : (
+                              <UserInitials name={user.name} />
+                            )}
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">
+                                {user.name}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm text-gray-600">{user.email}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <select
+                            value={user.role}
+                            onChange={(e) =>
+                              handleChangeRole(user._id, e.target.value)
+                            }
+                            disabled={changingRoleId === user._id}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                              roleBadgeClass[user.role]
+                            } border-0 cursor-pointer disabled:opacity-50`}
+                          >
+                            {roleOptions.map((role) => (
+                              <option key={role} value={role}>
+                                {role.charAt(0).toUpperCase() + role.slice(1)}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-medium text-gray-900">
+                            {user.totalBooksRead}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-medium text-gray-900">
+                            {user.streak} days
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm text-gray-600">
+                            {new Date(user.createdAt).toLocaleDateString()}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
                           <button
-                            disabled={u._id === currentUser?.id}
-                            onClick={() => setConfirmDeleteId(u._id)}
-                            className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            onClick={() => setConfirmDeleteId(user._id)}
+                            disabled={deletingId === user._id}
+                            className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50 hover:underline"
                           >
                             Deactivate
                           </button>
-                        )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Mobile Cards */}
+            <div className="space-y-4 md:hidden">
+              {users.map((user) => (
+                <div
+                  key={user._id}
+                  className="rounded-xl border border-gray-100 bg-white p-4"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-3">
+                      {user.avatar ? (
+                        <Image
+                          src={user.avatar}
+                          alt={user.name}
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <UserInitials name={user.name} />
+                      )}
+                      <div>
+                        <p className="font-medium text-gray-900">{user.name}</p>
+                        <p className="text-sm text-gray-500">{user.email}</p>
                       </div>
                     </div>
-
-                    {/* Mobile card */}
-                    <div className="md:hidden px-4 py-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <UserInitials name={u.name} />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{u.name}</p>
-                            <p className="text-xs text-gray-400">{u.email}</p>
-                          </div>
-                        </div>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${roleBadgeClass[u.role]}`}>
-                          {u.role}
-                        </span>
-                      </div>
-                      <div className="flex gap-4 text-xs text-gray-500 mb-3">
-                        <span>{u.totalBooksRead ?? 0} books</span>
-                        <span>{u.streak > 0 ? `🔥 ${u.streak} streak` : "No streak"}</span>
-                        <span>
-                          {new Date(u.createdAt).toLocaleDateString("en", {
-                            month: "short",
-                            year: "numeric",
-                          })}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={u.role}
-                          disabled={changingRoleId === u._id || u._id === currentUser?.id}
-                          onChange={(e) => changeRoleMutation.mutate({ id: u._id, role: e.target.value })}
-                          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none disabled:opacity-40"
-                        >
-                          <option value="user">User</option>
-                          <option value="admin">Admin</option>
-                          <option value="guest">Guest</option>
-                        </select>
-
-                        {confirmDeleteId === u._id ? (
-                          <span className="flex items-center gap-1">
-                            <span className="text-xs text-red-600">Sure?</span>
-                            <button onClick={() => deleteMutation.mutate(u._id)} className="text-xs text-red-600 font-semibold px-2 py-1">Yes</button>
-                            <button onClick={() => setConfirmDeleteId(null)} className="text-xs text-gray-500 px-2 py-1">No</button>
-                          </span>
-                        ) : (
-                          <button
-                            disabled={u._id === currentUser?.id}
-                            onClick={() => setConfirmDeleteId(u._id)}
-                            className="text-xs text-red-500 px-2 py-1 rounded-lg hover:bg-red-50 disabled:opacity-30"
-                          >
-                            Deactivate
-                          </button>
-                        )}
-                      </div>
+                    <button
+                      onClick={() => setConfirmDeleteId(user._id)}
+                      className="text-red-600 hover:text-red-700 text-sm font-medium"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Role</span>
+                      <select
+                        value={user.role}
+                        onChange={(e) =>
+                          handleChangeRole(user._id, e.target.value)
+                        }
+                        disabled={changingRoleId === user._id}
+                        className={`rounded-lg px-2 py-1 text-xs font-medium ${
+                          roleBadgeClass[user.role]
+                        } border-0 cursor-pointer disabled:opacity-50`}
+                      >
+                        {roleOptions.map((role) => (
+                          <option key={role} value={role}>
+                            {role.charAt(0).toUpperCase() + role.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Books Read</span>
+                      <span className="font-medium text-gray-900">
+                        {user.totalBooksRead}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Streak</span>
+                      <span className="font-medium text-gray-900">
+                        {user.streak} days
+                      </span>
                     </div>
                   </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={() => setPage(Math.max(1, page - 1))}
+                  disabled={page === 1}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                {pageNumbers.map((num, idx) => (
+                  <React.Fragment key={num}>
+                    {idx > 0 && pageNumbers[idx - 1] !== num - 1 && (
+                      <span className="text-gray-400">...</span>
+                    )}
+                    <button
+                      onClick={() => setPage(num)}
+                      className={`rounded-lg px-3 py-2 text-sm font-medium ${
+                        page === num
+                          ? "bg-blue-600 text-white"
+                          : "border border-gray-200 text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      {num}
+                    </button>
+                  </React.Fragment>
                 ))}
+                <button
+                  onClick={() => setPage(Math.min(totalPages, page + 1))}
+                  disabled={page === totalPages}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
               </div>
             )}
-          </div>
+          </>
+        )}
 
-        {/* Pagination */}
-        {(data?.totalPages ?? 1) > 1 && (
-          <div className="flex items-center justify-between mt-4 bg-white rounded-xl border border-gray-200 px-4 py-3">
-            <Button size="sm" variant="ghost" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
-              Prev
-            </Button>
-            <span className="text-sm text-gray-500">
-              Page {page} of {data?.totalPages}
-            </span>
-            <Button size="sm" variant="ghost" disabled={page === data?.totalPages} onClick={() => setPage((p) => p + 1)}>
-              Next
-            </Button>
+        {/* Delete Confirmation Modal */}
+        {confirmDeleteId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="rounded-2xl bg-white p-6 max-w-sm mx-4">
+              <h3 className="text-lg font-bold text-gray-900 mb-2">
+                Confirm Deactivation
+              </h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Are you sure you want to deactivate this user? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 font-medium hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() =>
+                    confirmDeleteId && handleDeleteUser(confirmDeleteId)
+                  }
+                  disabled={isDeletingUser}
+                  className="px-4 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-50"
+                >
+                  {isDeletingUser ? "Deactivating..." : "Deactivate"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
-      </main>
+      </div>
     </ProtectedRoute>
   );
 }
