@@ -6,10 +6,10 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import api from "../../../lib/api";
 import { Input } from "../../../components/ui/Input";
 import { Button } from "../../../components/ui/Button";
 import { toast } from "../../../components/ui/Toast";
+import { useResetPasswordMutation } from "../../../store/services/api";
 
 const schema = z
   .object({
@@ -49,6 +49,7 @@ function ResetPasswordInner() {
   const [status, setStatus] = useState<"idle" | "success" | "expired">("idle");
   const [countdown, setCountdown] = useState(3);
   const [watchedPw, setWatchedPw] = useState("");
+  const [resetPassword, resetState] = useResetPasswordMutation();
 
   const {
     register,
@@ -122,10 +123,10 @@ function ResetPasswordInner() {
 
   const onSubmit = async (data: FormValues) => {
     try {
-      await api.post("/api/auth/reset-password", {
+      await resetPassword({
         token,
         newPassword: data.newPassword,
-      });
+      }).unwrap();
       setStatus("success");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
@@ -185,7 +186,7 @@ function ResetPasswordInner() {
           register={register("confirmPassword")}
         />
 
-        <Button type="submit" className="w-full" isLoading={isSubmitting}>
+        <Button type="submit" className="w-full" isLoading={isSubmitting || resetState.isLoading}>
           Reset password
         </Button>
       </form>
