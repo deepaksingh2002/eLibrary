@@ -43,8 +43,8 @@ app.use(helmet({
   }
 }));
 
-// Build allowed origins from CORS_ORIGINS (comma-separated). Fall back to FRONTEND_URL or CLIENT_URL if present.
-const rawOrigins = [process.env.CORS_ORIGINS, process.env.FRONTEND_URL, process.env.CLIENT_URL]
+// Build allowed origins from CORS_ORIGINS (comma-separated). Fall back to FRONTEND_URL if present.
+const rawOrigins = [process.env.CORS_ORIGINS, process.env.FRONTEND_URL]
   .filter(Boolean)
   .join(",");
 
