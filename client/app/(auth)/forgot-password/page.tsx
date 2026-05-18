@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import api from "../../../lib/api";
 import { Input } from "../../../components/ui/Input";
 import { Button } from "../../../components/ui/Button";
 import { toast } from "../../../components/ui/Toast";
+import { useForgotPasswordMutation } from "../../../store/services/api";
 
 const schema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -19,6 +19,7 @@ type FormValues = z.infer<typeof schema>;
 export default function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
   const [sentEmail, setSentEmail] = useState("");
+  const [forgotPassword, forgotState] = useForgotPasswordMutation();
 
   const {
     register,
@@ -28,7 +29,7 @@ export default function ForgotPasswordPage() {
 
   const onSubmit = async (data: FormValues) => {
     try {
-      await api.post("/api/auth/forgot-password", { email: data.email });
+      await forgotPassword({ email: data.email }).unwrap();
       setSentEmail(data.email);
       setSent(true);
     } catch {
@@ -85,7 +86,7 @@ export default function ForgotPasswordPage() {
           register={register("email")}
         />
 
-        <Button type="submit" className="w-full" isLoading={isSubmitting}>
+        <Button type="submit" className="w-full" isLoading={isSubmitting || forgotState.isLoading}>
           Send reset link
         </Button>
       </form>
