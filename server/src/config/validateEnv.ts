@@ -8,8 +8,7 @@ const REQUIRED_ENV_VARS = [
   "CLOUDINARY_CLOUD_NAME",
   "CLOUDINARY_API_KEY",
   "CLOUDINARY_API_SECRET",
-  "CLIENT_URL",
-  "FRONTEND_URL",
+  "CORS_ORIGINS",
   "CRON_SECRET",
   "PASSWORD_RESET_EXPIRES_MINUTES",
 ] as const;
@@ -65,7 +64,17 @@ export function validateEnv(): void {
   }
 
   // FRONTEND_URL may be a comma-separated list of allowed frontend origins.
-  ensureValidUrl("FRONTEND_URL");
+  // Validate the comma-separated CORS_ORIGINS (required)
+  ensureValidUrl("CORS_ORIGINS");
+
+  // If FRONTEND_URL is present (used for email links), validate it but don't require it
+  if (process.env.FRONTEND_URL?.trim()) {
+    try {
+      ensureValidUrl("FRONTEND_URL");
+    } catch (err) {
+      throw err;
+    }
+  }
 
   const smtpPortValue = process.env.SMTP_PORT?.trim();
   if (smtpPortValue) {
