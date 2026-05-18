@@ -19,7 +19,7 @@ export const BookmarksPanel: React.FC<{ bookId: string }> = ({ bookId }) => {
     const pageNum = parseInt(pageInput, 10);
     if (!pageNum || pageNum < 1) return;
 
-    if (bookmarks.some(b => b.page === pageNum)) {
+    if (bookmarks.some((b: { page: number }) => b.page === pageNum)) {
       setErrorMsg("Bookmark for this page already exists");
       return;
     }
