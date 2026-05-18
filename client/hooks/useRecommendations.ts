@@ -1,14 +1,15 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import api from "../lib/api";
 import { useAuthStore } from "../store/authStore";
-import { Recommendation, RecommendationsResponse } from "../types";
+import { Recommendation } from "../types";
 import { toast } from "../components/ui/Toast";
+import {
+  useGetRecommendationsQuery,
+  useRefreshRecommendationsMutation,
+} from "../store/services/api";
 
 export function useRecommendations() {
-  const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -16,28 +17,30 @@ export function useRecommendations() {
     setIsHydrated(true);
   }, []);
 
-  const { data, isLoading, error } = useQuery<RecommendationsResponse>({
-    queryKey: ["recommendations"],
-    queryFn: () => api.get("/api/recommendations").then((r) => r.data),
-    enabled: isHydrated && !!user,
-    staleTime: 1000 * 60 * 10,
-    retry: 1
+  const { data, isLoading, error, refetch } = useGetRecommendationsQuery(undefined, {
+    skip: !isHydrated || !user,
+    pollingInterval: 0,
   });
 
-  const refreshMutation = useMutation({
-    mutationFn: () => api.post("/api/recommendations/refresh").then((r) => r.data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+  const [refresh, refreshState] = useRefreshRecommendationsMutation();
+
+  const handleRefresh = async () => {
+    try {
+      await refresh().unwrap();
       toast.success("Recommendations updated!");
-    },
-    onError: (error: any) => {
+      refetch();
+    } catch (err: unknown) {
       const msg =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Could not refresh. Please try again later.";
+        typeof err === "object" && err !== null && "data" in err &&
+        typeof (err as { data?: unknown }).data === "object" &&
+        (err as { data?: { message?: string } }).data?.message
+          ? (err as { data: { message: string } }).data.message
+          : err instanceof Error
+            ? err.message
+            : "Could not refresh.";
       toast.error(msg);
-    },
-  });
+    }
+  };
 
   return {
     recommendations: (data?.recommendations || []) as Recommendation[],
@@ -45,7 +48,7 @@ export function useRecommendations() {
     computedAt: data?.computedAt ?? null,
     isLoading,
     error,
-    refresh: refreshMutation.mutate,
-    isRefreshing: refreshMutation.isPending,
+    refresh: handleRefresh,
+    isRefreshing: refreshState.isLoading,
   };
 }
