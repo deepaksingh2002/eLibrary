@@ -3,14 +3,13 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
 import { useAuthStore } from "../../../store/authStore";
 import { Button } from "../../../components/ui/Button";
 import { Badge } from "../../../components/ui/Badge";
 import { Spinner } from "../../../components/ui/Spinner";
 import { toast } from "../../../components/ui/Toast";
-import api from "../../../lib/api";
+import { useUpdateAvatarMutation, useUpdatePreferencesMutation, useUpdateProfileMutation, useLogoutAllMutation } from "../../../store/services/api";
 
 const GENRES = [
   "Programming", "Mathematics", "Science", "Literature",
@@ -26,7 +25,6 @@ const LANGUAGES = [
 
 export default function SettingsPage() {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { user, logout, setAuth } = useAuthStore();
   
   const [name, setName] = useState(user?.name || "");
@@ -42,64 +40,29 @@ export default function SettingsPage() {
       }
     }
   }, [user]);
-
-  const profileMutation = useMutation({
-    mutationFn: (newName: string) => api.patch("/api/users/me/profile", { name: newName }).then(r => r.data),
-    onSuccess: (updatedUser) => {
-      if (user) {
-        const { accessToken } = useAuthStore.getState();
-        if (accessToken) setAuth(updatedUser, accessToken);
-      }
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success("Profile saved!");
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to update profile");
-    }
-  });
-
-  const preferencesMutation = useMutation({
-    mutationFn: (prefs: { genres: string[], language: string }) => 
-      api.patch("/api/users/me/preferences", prefs).then(r => r.data),
-    onSuccess: (updatedPrefs) => {
-      if (user) {
-        const { accessToken } = useAuthStore.getState();
-        const updatedUser = { ...user, preferences: updatedPrefs };
-        if (accessToken) setAuth(updatedUser, accessToken);
-      }
-      toast.success("Preferences saved!");
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to save preferences");
-    }
-  });
-
-  const avatarMutation = useMutation({
-    mutationFn: (file: File) => {
-      const formData = new FormData();
-      formData.append("cover", file);
-      return api.patch("/api/users/me/avatar", formData, {
-        headers: { "Content-Type": "multipart/form-data" }
-      }).then(r => r.data);
-    },
-    onSuccess: (data) => {
-      if (user) {
-        const { accessToken } = useAuthStore.getState();
-        const updatedUser = { ...user, avatar: data.avatar };
-        if (accessToken) setAuth(updatedUser, accessToken);
-      }
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success("Avatar updated!");
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to upload avatar");
-    }
-  });
+  const [updateProfile, profileState] = useUpdateProfileMutation();
+  const [updatePreferences, preferencesState] = useUpdatePreferencesMutation();
+  const [updateAvatar, avatarState] = useUpdateAvatarMutation();
+  const [logoutAll] = useLogoutAllMutation();
 
   const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      avatarMutation.mutate(file);
+      const formData = new FormData();
+      formData.append("cover", file);
+      updateAvatar(formData)
+        .unwrap()
+        .then((data) => {
+          if (user) {
+            const { accessToken } = useAuthStore.getState();
+            const updatedUser = { ...user, avatar: data.avatar };
+            if (accessToken) setAuth(updatedUser, accessToken);
+          }
+          toast.success("Avatar updated!");
+        })
+        .catch((error) => {
+          toast.error(error instanceof Error ? error.message : "Failed to upload avatar");
+        });
     }
   };
 
@@ -117,7 +80,7 @@ export default function SettingsPage() {
 
   const handleLogoutAll = async () => {
     try {
-      await api.post("/api/auth/logout-all");
+      await logoutAll().unwrap();
       logout();
       router.push("/");
     } catch {
@@ -145,7 +108,7 @@ export default function SettingsPage() {
                     className="relative w-24 h-24 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center border-2 border-dashed border-gray-300 cursor-pointer hover:border-blue-500 transition-colors group"
                     onClick={() => document.getElementById("avatar-upload")?.click()}
                   >
-                    {avatarMutation.isPending ? (
+                    {avatarState.isLoading ? (
                       <Spinner size="sm" />
                     ) : user.avatar ? (
                       <Image src={user.avatar} alt={user.name} fill className="object-cover" />
@@ -176,12 +139,21 @@ export default function SettingsPage() {
                       className="w-full max-w-md rounded-lg border border-gray-300 px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
-                  <Button 
+                    <Button 
                     variant="primary" 
-                    onClick={() => profileMutation.mutate(name)}
-                    disabled={profileMutation.isPending || name === user.name || name.trim().length < 2}
+                    onClick={() => updateProfile({ name }).unwrap().then((updatedUser) => {
+                      if (user) {
+                        const { accessToken } = useAuthStore.getState();
+                        const mergedUser = { ...user, ...updatedUser };
+                        if (accessToken) setAuth(mergedUser, accessToken);
+                      }
+                      toast.success("Profile saved!");
+                    }).catch((error) => {
+                      toast.error(error instanceof Error ? error.message : "Failed to update profile");
+                    })}
+                    disabled={profileState.isLoading || name === user.name || name.trim().length < 2}
                   >
-                    {profileMutation.isPending ? "Saving..." : "Save Name"}
+                    {profileState.isLoading ? "Saving..." : "Save Name"}
                   </Button>
                 </div>
               </div>
@@ -238,12 +210,21 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <Button 
+                <Button 
                 variant="primary" 
-                onClick={() => preferencesMutation.mutate({ genres: selectedGenres, language: selectedLanguage })}
-                disabled={preferencesMutation.isPending}
+                onClick={() => updatePreferences({ genres: selectedGenres, language: selectedLanguage }).unwrap().then((updatedPrefs) => {
+                  if (user) {
+                    const { accessToken } = useAuthStore.getState();
+                    const updatedUser = { ...user, preferences: updatedPrefs };
+                    if (accessToken) setAuth(updatedUser, accessToken);
+                  }
+                  toast.success("Preferences saved!");
+                }).catch((error) => {
+                  toast.error(error instanceof Error ? error.message : "Failed to save preferences");
+                })}
+                disabled={preferencesState.isLoading}
               >
-                {preferencesMutation.isPending ? "Saving..." : "Save Preferences"}
+                {preferencesState.isLoading ? "Saving..." : "Save Preferences"}
               </Button>
             </div>
           </div>
