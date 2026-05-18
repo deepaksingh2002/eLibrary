@@ -15,6 +15,12 @@ export interface IBook extends Document {
   downloads: number;
   avgRating: number;
   totalReviews: number;
+  isbn: string;
+  publishedYear: string;
+  publisher: string;
+  pageCount: number;
+  importSource: "manual" | "google_books" | "open_library" | "smart_import" | "bulk_json";
+  externalId: string;
   uploadedBy: mongoose.Types.ObjectId;
   isDeleted: boolean;
   createdAt?: Date;
@@ -30,12 +36,22 @@ const bookSchema = new Schema<IBook>({
   tags: { type: [{ type: String }], default: [] },
   coverUrl: { type: String, default: "" },
   coverPublicId: { type: String, default: "" },
-  pdfUrl: { type: String, required: true },
+  pdfUrl: { type: String, default: "" },
   pdfPublicId: { type: String, default: "" },
   status: { type: String, enum: ["draft", "published"], default: "draft" },
   downloads: { type: Number, default: 0 },
   avgRating: { type: Number, default: 0, min: 0, max: 5 },
   totalReviews: { type: Number, default: 0 },
+  isbn: { type: String, default: "" },
+  publishedYear: { type: String, default: "" },
+  publisher: { type: String, default: "" },
+  pageCount: { type: Number, default: 0 },
+  importSource: {
+    type: String,
+    enum: ["manual", "google_books", "open_library", "smart_import", "bulk_json"],
+    default: "manual"
+  },
+  externalId: { type: String, default: "" },
   uploadedBy: { type: Schema.Types.ObjectId, ref: "User" },
   isDeleted: { type: Boolean, default: false },
 }, { timestamps: true });
@@ -55,6 +71,7 @@ bookSchema.index({ createdAt: -1 });
 bookSchema.index({ isDeleted: 1 });
 bookSchema.index({ status: 1, isDeleted: 1 });
 bookSchema.index({ uploadedBy: 1 });
+bookSchema.index({ isbn: 1 }, { sparse: true });
 
 export const Book = mongoose.model<IBook>("Book", bookSchema);
 export default Book;
