@@ -3,9 +3,7 @@
 import React from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "../../../components/ui/Toast";
-import api from "../../../lib/api";
 import { DashboardData, UserStats } from "../../../types";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
 import { StreakBadge } from "../../../components/StreakBadge";
@@ -13,29 +11,22 @@ import { GoalProgressWidget } from "../../../components/GoalProgressWidget";
 import { WeeklyActivityChart } from "../../../components/WeeklyActivityChart";
 import { ActivityFeed } from "../../../components/ActivityFeed";
 import { RecommendationsShelf } from "../../../components/RecommendationsShelf";
+import { useGetDashboardQuery, useGetUserStatsQuery, useUpdateGoalMutation } from "../../../store/services/api";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const queryClient = useQueryClient();
 
-  const { data: dashboard, isLoading: isDashboardLoading } = useQuery<DashboardData>({
-    queryKey: ["dashboard"],
-    queryFn: () => api.get("/api/users/me/dashboard").then((r) => r.data),
-    staleTime: 1000 * 60 * 2,
-  });
+  const { data: dashboard, isLoading: isDashboardLoading } = useGetDashboardQuery() as {
+    data?: DashboardData;
+    isLoading: boolean;
+  };
 
-  const { data: stats, isLoading: isStatsLoading } = useQuery<UserStats>({
-    queryKey: ["user-stats"],
-    queryFn: () => api.get("/api/users/me/stats").then((r) => r.data),
-  });
+  const { data: stats, isLoading: isStatsLoading } = useGetUserStatsQuery() as {
+    data?: UserStats;
+    isLoading: boolean;
+  };
 
-  const goalMutation = useMutation({
-    mutationFn: (goal: number) => api.patch("/api/users/me/goal", { monthlyGoal: goal }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success("Reading goal updated!");
-    },
-  });
+  const [updateGoal] = useUpdateGoalMutation();
 
   if (isDashboardLoading || isStatsLoading) {
     return (
@@ -169,7 +160,10 @@ export default function DashboardPage() {
               booksCompletedThisMonth={dashboard.goalProgress.booksCompletedThisMonth}
               percentage={dashboard.goalProgress.percentage}
               isGoalSet={dashboard.goalProgress.isGoalSet}
-              onGoalChange={(val) => goalMutation.mutate(val)}
+              onGoalChange={async (val) => {
+                await updateGoal({ monthlyGoal: val }).unwrap();
+                toast.success("Reading goal updated!");
+              }}
             />
 
             <div className="mt-4">
