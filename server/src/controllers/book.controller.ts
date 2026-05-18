@@ -9,6 +9,7 @@ import {
   getBookById as getBookByIdService,
   hardDeleteBook,
   listBooks,
+  resolveBookPdf as resolveBookPdfService,
   searchBooks as searchBooksService,
   summarizeBook as summarizeBookService,
   softDeleteBook,
@@ -94,6 +95,15 @@ export const toggleBookStatus = asyncHandler(async (req: Request, res: Response)
   }
 
   const data = await toggleBookStatusService(req.params.id);
+  res.status(200).json(data);
+});
+
+export const resolveBookPdf = asyncHandler(async (req: Request, res: Response) => {
+  if (!isValidId(req.params.id)) {
+    throw new ApiError(400, "Invalid book ID");
+  }
+
+  const data = await resolveBookPdfService(req.params.id);
   res.status(200).json(data);
 });
 
