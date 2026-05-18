@@ -8,6 +8,7 @@ import {
   getAllBooks,
   getBookById,
   permanentDeleteBook,
+  resolveBookPdf,
   searchBooks,
   summarizeBook,
   toggleBookStatus,
@@ -32,5 +33,6 @@ router.patch("/:id", protect, requireRole("admin"), uploadBookFiles, updateBook)
 router.delete("/:id", protect, requireRole("admin"), deleteBook);
 router.delete("/:id/permanent", protect, requireRole("admin"), permanentDeleteBook);
 router.patch("/:id/toggle-status", protect, requireRole("admin"), toggleBookStatus);
+router.post("/:id/resolve-pdf", protect, requireRole("admin"), resolveBookPdf);
 
 export default router;
