@@ -4,13 +4,12 @@ import React from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
 import * as z from "zod";
-import api from "../lib/api";
 import { useAuthStore } from "../store/authStore";
 import { Button } from "./ui/Button";
 import { StarRating } from "./ui/StarRating";
 import { toast } from "./ui/Toast";
+import { useCreateReviewMutation } from "../store/services/api";
 
 const reviewSchema = z.object({
   rating: z.number().min(1, "Please choose a rating").max(5, "Please choose a rating"),
@@ -28,6 +27,7 @@ interface ReviewFormProps {
 export const ReviewForm: React.FC<ReviewFormProps> = ({ bookId, onSuccess }) => {
   const { isAuthenticated } = useAuthStore();
   const [serverError, setServerError] = React.useState<string | null>(null);
+  const [createReview, reviewState] = useCreateReviewMutation();
 
   const {
     register,
@@ -49,38 +49,29 @@ export const ReviewForm: React.FC<ReviewFormProps> = ({ bookId, onSuccess }) => 
   const bodyValue = watch("body") ?? "";
   const ratingValue = watch("rating") ?? 0;
 
-  const mutation = useMutation({
-    mutationFn: async (values: ReviewFormValues) => {
-      const payload = {
-        bookId,
-        rating: values.rating,
-        title: values.title?.trim() || undefined,
-        body: values.body?.trim() || undefined,
-      };
-      const response = await api.post("/api/reviews", payload);
-      return response.data;
-    },
-    onSuccess: () => {
-      toast.success("Review submitted!");
-      setServerError(null);
-      reset({ rating: 0, title: "", body: "" });
-      onSuccess();
-    },
-    onError: (error) => {
-      const rawMessage = typeof error === "string" ? error : "Failed to submit review";
-      const message =
-        rawMessage.includes("already reviewed")
+  const onSubmit = (values: ReviewFormValues) => {
+    setServerError(null);
+    return createReview({
+      bookId,
+      rating: values.rating,
+      title: values.title?.trim() || undefined,
+      body: values.body?.trim() || undefined,
+    })
+      .unwrap()
+      .then(() => {
+        toast.success("Review submitted!");
+        reset({ rating: 0, title: "", body: "" });
+        onSuccess();
+      })
+      .catch((error) => {
+        const rawMessage = typeof error === "string" ? error : "Failed to submit review";
+        const message = rawMessage.includes("already reviewed")
           ? "You have already reviewed this book"
           : rawMessage;
 
-      setServerError(message);
-      toast.error(message);
-    },
-  });
-
-  const onSubmit = (values: ReviewFormValues) => {
-    setServerError(null);
-    return mutation.mutateAsync(values);
+        setServerError(message);
+        toast.error(message);
+      });
   };
 
   if (!isAuthenticated) {
@@ -163,7 +154,7 @@ export const ReviewForm: React.FC<ReviewFormProps> = ({ bookId, onSuccess }) => 
         <Button
           type="submit"
           variant="primary"
-          isLoading={isSubmitting || mutation.isPending}
+          isLoading={isSubmitting || reviewState.isLoading}
         >
           Submit Review
         </Button>
