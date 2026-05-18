@@ -3,13 +3,14 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "../store/authStore";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
 
 export const Navbar: React.FC = () => {
   const router = useRouter();
+  const pathname = usePathname();
   const { isAuthenticated, user, logout } = useAuthStore();
   const [searchValue, setSearchValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -30,7 +31,7 @@ export const Navbar: React.FC = () => {
   // Close mobile menu on route change
   React.useEffect(() => {
     setMobileMenuOpen(false);
-  }, []);
+  }, [pathname]);
 
   const handleSearchSubmit = (event: React.FormEvent) => {
     event.preventDefault();
