@@ -1,18 +1,13 @@
 import React from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import api from "../lib/api";
 import { Book } from "../types";
+import { useGetSimilarBooksQuery } from "../store/services/api";
 
 export const SimilarBooksPanel: React.FC<{ bookId: string }> = ({ bookId }) => {
   const router = useRouter();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["similar-books", bookId],
-    queryFn: () => api.get(`/api/recommendations/similar/${bookId}`).then(r => r.data),
-    staleTime: 1000 * 60 * 30
-  });
+  const { data, isLoading } = useGetSimilarBooksQuery(bookId, { skip: !bookId });
 
   return (
     <section>
