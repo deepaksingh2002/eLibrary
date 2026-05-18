@@ -50,7 +50,11 @@ export const uploadBookFiles = multer({
       return cb(new Error("Cover must be an image file"));
     }
 
-    if (file.fieldname === "pdf" && file.mimetype !== "application/pdf") {
+    const looksLikePdf =
+      file.mimetype === "application/pdf" ||
+      file.originalname.toLowerCase().endsWith(".pdf");
+
+    if (file.fieldname === "pdf" && !looksLikePdf) {
       return cb(new Error("Book file must be a PDF"));
     }
 
@@ -70,15 +74,26 @@ export async function uploadBufferToCloudinary(
   }
 ): Promise<{ secure_url: string; public_id: string }> {
   return new Promise((resolve, reject) => {
+    let uploadCompleted = false;
+    
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder: options.folder,
         resource_type: options.resource_type,
-        public_id: options.public_id
+        public_id: options.public_id,
+        timeout: 120000, // 2 minutes timeout for large files
+        chunk_size: 6000000 // 6MB chunks for better streaming
       },
       (error, result) => {
-        if (error || !result) {
-          return reject(error || new Error("Cloudinary upload failed"));
+        if (uploadCompleted) return; // Prevent double callback
+        uploadCompleted = true;
+        
+        if (error) {
+          return reject(new Error(`Cloudinary upload failed: ${error.message}`));
+        }
+
+        if (!result) {
+          return reject(new Error("Cloudinary upload failed: no result returned"));
         }
 
         resolve({
@@ -88,7 +103,30 @@ export async function uploadBufferToCloudinary(
       }
     );
 
+    // Add error handling for stream errors
+    uploadStream.on("error", (error) => {
+      if (!uploadCompleted) {
+        uploadCompleted = true;
+        reject(new Error(`Stream error during upload: ${error.message}`));
+      }
+    });
+
+    // Set a timeout for the overall operation
+    const timeoutId = setTimeout(() => {
+      if (!uploadCompleted) {
+        uploadCompleted = true;
+        uploadStream.destroy();
+        reject(new Error("File upload timed out. File may be too large or connection is slow."));
+      }
+    }, 180000); // 3 minutes total timeout
+
+    // Write buffer to stream
     uploadStream.end(buffer);
+    
+    // Clear timeout on completion
+    uploadStream.on("finish", () => {
+      clearTimeout(timeoutId);
+    });
   });
 }
 
