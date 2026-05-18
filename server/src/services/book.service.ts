@@ -4,6 +4,7 @@ import { UserActivity } from "../models/UserActivity";
 import { deleteFromCloudinary, generateSignedUrl, uploadBufferToCloudinary } from "../config/cloudinary";
 import { ApiError } from "../utils/ApiError";
 import { summarizePdfBook } from "./claudeService";
+import { resolveExternalPdfUrl } from "./externalPdfResolver";
 
 type AuthUser = {
   id: string;
@@ -328,11 +329,26 @@ export async function createBook(payload: BookPayload, files: FilesMap | undefin
       )
     );
 
+    if (error instanceof Error) {
+      console.error("[BookService] createBook failed:", error.message);
+      
+      // Provide specific error messages for common issues
+      if (error.message.includes("timed out") || error.message.includes("timeout")) {
+        throw new ApiError(408, "PDF upload timed out. Please try a smaller file or check your connection.");
+      }
+      if (error.message.includes("too large")) {
+        throw new ApiError(413, "File is too large. Please ensure your PDF is under 50MB.");
+      }
+      if (error.message.includes("Cloudinary")) {
+        throw new ApiError(502, "Failed to upload PDF to storage service. Please try again.");
+      }
+    }
+
     if (error instanceof ApiError) {
       throw error;
     }
 
-    throw new ApiError(500, "Failed to create book");
+    throw new ApiError(500, "Failed to create book. Please try again later.");
   }
 }
 
@@ -452,23 +468,71 @@ export async function toggleBookStatus(id: string) {
   };
 }
 
+export async function resolveBookPdf(id: string) {
+  const book = await Book.findOne({ _id: id, isDeleted: false });
+  if (!book) {
+    throw new ApiError(404, "Book not found");
+  }
+
+  if (book.pdfPublicId) {
+    return {
+      message: "This book already has an uploaded PDF",
+      resolved: false,
+      hasPdf: true,
+      book
+    };
+  }
+
+  const resolvedPdfUrl = await resolveExternalPdfUrl({
+    title: book.title,
+    author: book.author,
+    isbn: book.isbn,
+    importSource: book.importSource,
+    externalId: book.externalId,
+    pdfUrl: ""
+  });
+
+  if (!resolvedPdfUrl) {
+    throw new ApiError(404, "No external PDF found for this book");
+  }
+
+  if (book.pdfUrl === resolvedPdfUrl) {
+    return {
+      message: "PDF is already linked for this book",
+      resolved: true,
+      hasPdf: true,
+      book
+    };
+  }
+
+  book.pdfUrl = resolvedPdfUrl;
+  await book.save();
+
+  return {
+    message: "PDF resolved and saved successfully",
+    resolved: true,
+    hasPdf: true,
+    book
+  };
+}
+
 export async function downloadBook(id: string, user: AuthUser) {
   console.log(`[Download] User ${user.id} requesting download for book ${id}`);
-  
-  const book = await Book.findOne({
+
+  const accessFilter: Record<string, unknown> = {
     _id: id,
-    isDeleted: false,
-    status: "published"
-  });
+    isDeleted: false
+  };
+
+  if (user.role !== "admin") {
+    accessFilter.status = "published";
+  }
+
+  const book = await Book.findOne(accessFilter);
 
   if (!book) {
     console.error(`[Download] Book not found: ${id}`);
     throw new ApiError(404, "Book not found");
-  }
-
-  if (!book.pdfUrl) {
-    console.error(`[Download] PDF URL missing for book ${id}`);
-    throw new ApiError(404, "PDF not available for this book");
   }
 
   let downloadUrl: string;
@@ -483,8 +547,15 @@ export async function downloadBook(id: string, user: AuthUser) {
         downloadUrl = book.pdfUrl;
       }
     } else {
-      console.warn(`[Download] pdfPublicId missing for book ${id}, using direct pdfUrl`);
-      downloadUrl = book.pdfUrl;
+      console.warn(`[Download] pdfPublicId missing for book ${id}, trying stored or external source PDF URL`);
+      downloadUrl = book.pdfUrl || await resolveExternalPdfUrl({
+        title: book.title,
+        author: book.author,
+        isbn: book.isbn,
+        importSource: book.importSource,
+        externalId: book.externalId,
+        pdfUrl: book.pdfUrl
+      });
     }
     
     // Ensure PDF download format by adding proper parameters
@@ -500,7 +571,7 @@ export async function downloadBook(id: string, user: AuthUser) {
     // Final validation
     if (!downloadUrl) {
       console.error(`[Download] Failed to get any download URL for book ${id}`);
-      throw new ApiError(500, "Failed to generate download URL");
+      throw new ApiError(404, "PDF not available for this book");
     }
     
     console.log(`[Download] Successfully generated download URL for book ${id}, URL length: ${downloadUrl.length}`);
