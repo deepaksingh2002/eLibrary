@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import api from "../lib/api";
 import { toast } from "../components/ui/Toast";
+import { useCreateBookMutation, useUpdateBookMutation } from "../store/services/api";
 
 export interface BookFormValues {
   title: string;
@@ -73,7 +72,6 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 export function useBookForm({ bookId, initialData }: UseBookFormOptions = {}) {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const isEditMode = Boolean(bookId);
 
   const [values, setValues] = useState<BookFormValues>({
@@ -151,52 +149,8 @@ export function useBookForm({ bookId, initialData }: UseBookFormOptions = {}) {
     return formData;
   }
 
-  const createMutation = useMutation({
-    mutationFn: (formData: FormData) =>
-      api.post("/api/books", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (event) => {
-          if (event.total) {
-            setUploadProgress(Math.round((event.loaded / event.total) * 100));
-          }
-        }
-      }),
-    onSuccess: () => {
-      setUploadProgress(100);
-      queryClient.invalidateQueries({ queryKey: ["books"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-books"] });
-      toast.success("Book created successfully!");
-      router.push("/admin/books");
-    },
-    onError: (error) => {
-      setUploadProgress(0);
-      toast.error(getErrorMessage(error, "Failed to create book"));
-    }
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: (formData: FormData) =>
-      api.patch(`/api/books/${bookId}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (event) => {
-          if (event.total) {
-            setUploadProgress(Math.round((event.loaded / event.total) * 100));
-          }
-        }
-      }),
-    onSuccess: () => {
-      setUploadProgress(100);
-      queryClient.invalidateQueries({ queryKey: ["books"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-books"] });
-      queryClient.invalidateQueries({ queryKey: ["book", bookId] });
-      toast.success("Book updated successfully!");
-      router.push("/admin/books");
-    },
-    onError: (error) => {
-      setUploadProgress(0);
-      toast.error(getErrorMessage(error, "Failed to update book"));
-    }
-  });
+  const [createBook, createState] = useCreateBookMutation();
+  const [updateBook, updateState] = useUpdateBookMutation();
 
   function handleSubmit() {
     if (!validate()) return;
@@ -205,18 +159,38 @@ export function useBookForm({ bookId, initialData }: UseBookFormOptions = {}) {
     const formData = buildFormData();
 
     if (isEditMode) {
-      updateMutation.mutate(formData);
+      updateBook({ bookId: bookId as string, body: formData })
+        .unwrap()
+        .then(() => {
+          setUploadProgress(100);
+          toast.success("Book updated successfully!");
+          router.push("/admin/books");
+        })
+        .catch((error) => {
+          setUploadProgress(0);
+          toast.error(getErrorMessage(error, "Failed to update book"));
+        });
       return;
     }
 
-    createMutation.mutate(formData);
+    createBook(formData)
+      .unwrap()
+      .then(() => {
+        setUploadProgress(100);
+        toast.success("Book created successfully!");
+        router.push("/admin/books");
+      })
+      .catch((error) => {
+        setUploadProgress(0);
+        toast.error(getErrorMessage(error, "Failed to create book"));
+      });
   }
 
   return {
     values,
     errors,
     uploadProgress,
-    isSubmitting: createMutation.isPending || updateMutation.isPending,
+    isSubmitting: createState.isLoading || updateState.isLoading,
     isEditMode,
     setField,
     handleSubmit,
