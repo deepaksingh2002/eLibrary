@@ -3,13 +3,12 @@
 import React from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import api from "../../../lib/api";
 import type { AutocompleteSuggestion, SearchResult } from "../../../types";
 import { BookCard } from "../../../components/BookCard";
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { Skeleton } from "../../../components/ui/Skeleton";
+import { useAutocompleteBooksQuery, useSearchBooksQuery } from "../../../store/services/api";
 
 const genreOptions = [
   "All Genres",
@@ -138,31 +137,18 @@ function SearchPageContent() {
     [router, searchParams]
   );
 
-  const searchQuery = useQuery<SearchResult>({
-    queryKey: ["search", q, genre, language, sort, page],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (q) params.set("q", q);
-      if (genre) params.set("genre", genre);
-      if (language) params.set("language", language);
-      if (sort) params.set("sort", sort);
-      params.set("page", String(page));
-      params.set("limit", "12");
+  const searchQuery = useSearchBooksQuery({ q, genre, language, sort, page, limit: 12 }) as {
+    data?: SearchResult;
+    isLoading: boolean;
+    isError: boolean;
+    error: unknown;
+    refetch: () => void;
+  };
 
-      const response = await api.get(`/api/books/search?${params.toString()}`);
-      return response.data;
-    },
-    staleTime: 1000 * 60 * 2,
-  });
-
-  const autocompleteQuery = useQuery<{ suggestions: AutocompleteSuggestion[] }>({
-    queryKey: ["autocomplete", debouncedValue],
-    queryFn: async () => {
-      const response = await api.get(`/api/books/autocomplete?q=${encodeURIComponent(debouncedValue)}`);
-      return response.data;
-    },
-    enabled: debouncedValue.length >= 2,
-  });
+  const autocompleteQuery = useAutocompleteBooksQuery(debouncedValue, { skip: debouncedValue.length < 2 }) as {
+    data?: { suggestions: AutocompleteSuggestion[] };
+    isLoading: boolean;
+  };
 
   const activeFilters = [
     genre ? { key: "genre", label: genre } : null,
