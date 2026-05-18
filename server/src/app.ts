@@ -56,8 +56,15 @@ const allowedOrigins = rawOrigins
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Log origin and allowed origins to help debug CORS failures
+    const originStr = origin || "(no origin)";
+    const normalizedAllowed = allowedOrigins.map((o) => o.replace(/\/+$/, ""));
+    const normalizedOrigin = String(originStr).replace(/\/+$/, "");
+    const isAllowed = normalizedOrigin === "(no origin)" || normalizedAllowed.includes(normalizedOrigin);
+    console.log(`[CORS] origin=${originStr} allowed=${isAllowed} allowedList=${normalizedAllowed.join(",")}`);
+
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (isAllowed) return callback(null, true);
     callback(new Error(`CORS: Origin ${origin} not allowed`));
   },
   credentials: true,
