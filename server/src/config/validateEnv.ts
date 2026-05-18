@@ -82,10 +82,10 @@ export function validateEnv(): void {
   }
 
   if (!process.env.GEMINI_API_KEY?.trim()) {
-    console.warn("[Env] GEMINI_API_KEY is not configured. AI explanations will use fallback text.");
+    // Non-fatal: AI features disabled with fallback text
   }
 
   if (configuredSmtpVars.length === 0) {
-    console.warn("[Env] SMTP is not configured. Email delivery will be disabled.");
+    // Non-fatal: Email delivery disabled
   }
 }
