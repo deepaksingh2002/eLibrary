@@ -14,6 +14,8 @@ import reviewRouter from "./routes/review.routes";
 import userRouter from "./routes/user.routes";
 import recommendationRouter from "./routes/recommendation.routes";
 import adminRouter from "./routes/admin.routes";
+import smartImportRouter from "./routes/smartImport.routes";
+import aiStudyRouter from "./routes/aiStudy.routes";
 import { ApiError } from "./utils/ApiError";
 
 const app = express();
@@ -79,9 +81,11 @@ const authRateLimiter = rateLimit({
 
 app.use(globalLimiter);
 app.use((req, res, next) => {
-  res.setHeader("X-Request-ID", crypto.randomUUID());
-  next();
-});
+  res.setHeader("X-Request-ID", crypto.randomUUID())
+  res.setHeader("Cache-Control", req.method === "GET" ? "public, max-age=300" : "no-cache")
+  res.setHeader("X-Content-Type-Options", "nosniff")
+  next()
+})
 
 app.use("/api/auth", authRateLimiter, authRouter);
 app.use("/api/books", bookRouter);
@@ -90,6 +94,8 @@ app.use("/api/reviews", reviewRouter);
 app.use("/api/users", userRouter);
 app.use("/api/recommendations", recommendationRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/admin/smart-import", smartImportRouter);
+app.use("/api/ai-study", aiStudyRouter);
 
 app.get("/health", (req, res) => {
   res.status(200).json({
