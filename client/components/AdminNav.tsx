@@ -1,8 +1,6 @@
-"use client";
-
-import React from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+"use client"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 export const AdminNav: React.FC = () => {
   const pathname = usePathname();
@@ -10,6 +8,7 @@ export const AdminNav: React.FC = () => {
   const items = [
     { name: "Dashboard", path: "/admin", icon: "📊" },
     { name: "Books", path: "/admin/books", icon: "📚" },
+    { name: "Smart Import", path: "/admin/books/smart-import", icon: "🔍" },
     { name: "Import", path: "/admin/books/import", icon: "⬆" },
     { name: "Moderation", path: "/admin/reviews", icon: "🚩" },
     { name: "Users", path: "/admin/users", icon: "👤" }
