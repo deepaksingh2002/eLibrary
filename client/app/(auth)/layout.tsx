@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "../../store/authStore";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, hasHydrated } = useAuthStore();
+  const { isAuthenticated, hasHydrated, user } = useAuthStore();
   const router = useRouter();
 
   useEffect(() => {
     if (hasHydrated && isAuthenticated) {
-      router.push("/");
+      router.replace(user?.role === "admin" ? "/admin" : "/");
     }
-  }, [hasHydrated, isAuthenticated, router]);
+  }, [hasHydrated, isAuthenticated, router, user?.role]);
 
   if (!hasHydrated || isAuthenticated) return null; // Avoid flicker
 

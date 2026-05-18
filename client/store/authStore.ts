@@ -18,6 +18,8 @@ interface AuthState {
   finishHydration: () => void;
 }
 
+const resolveIsAuthenticated = (user: User | null, accessToken: string | null) => !!user && !!accessToken;
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -26,7 +28,12 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       hasHydrated: false,
       setAuth: (user, accessToken) =>
-        set({ user, accessToken, isAuthenticated: true, hasHydrated: true }),
+        set({
+          user,
+          accessToken,
+          isAuthenticated: resolveIsAuthenticated(user, accessToken),
+          hasHydrated: true,
+        }),
       logout: () => {
         set({ user: null, accessToken: null, isAuthenticated: false, hasHydrated: true });
         fetch(`${API_URL}/api/auth/logout`, {
@@ -37,10 +44,14 @@ export const useAuthStore = create<AuthState>()(
           },
         }).catch(() => {});
       },
-      updateToken: (accessToken) => set({ accessToken, isAuthenticated: true }),
+      updateToken: (accessToken) =>
+        set((state) => ({
+          accessToken,
+          isAuthenticated: resolveIsAuthenticated(state.user, accessToken),
+        })),
       finishHydration: () =>
         set((state) => ({
-          isAuthenticated: !!state.user && !!state.accessToken,
+          isAuthenticated: resolveIsAuthenticated(state.user, state.accessToken),
           hasHydrated: true,
         })),
     }),
@@ -49,7 +60,6 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
         accessToken: state.accessToken,
-        isAuthenticated: state.isAuthenticated,
       }),
       onRehydrateStorage: () => (state) => {
         state?.finishHydration();

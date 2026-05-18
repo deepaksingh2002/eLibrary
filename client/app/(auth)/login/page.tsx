@@ -11,6 +11,7 @@ import { Input } from "../../../components/ui/Input";
 import { Button } from "../../../components/ui/Button";
 import { useLoginMutation } from "../../../store/services/api";
 import { getApiErrorMessage } from "../../../lib/getApiErrorMessage";
+import { getSafeReturnUrl } from "../../../lib/authRedirect";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -35,7 +36,9 @@ export default function LoginPage() {
     try {
       const { user, accessToken } = await login(data).unwrap();
       setAuth(user, accessToken);
-      router.push(searchParams.get("returnUrl") || "/");
+      router.replace(
+        getSafeReturnUrl(searchParams.get("returnUrl"), user.role === "admin" ? "/admin" : "/")
+      );
     } catch (error: unknown) {
       setServerError(getApiErrorMessage(error, "Login failed"));
     }

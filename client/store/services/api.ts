@@ -23,8 +23,8 @@ import type {
 
 const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-// Generic response type for unknown API responses
-type ApiResponse<T = Record<string, unknown>> = T;
+// Generic response type for API responses with explicit payload contracts.
+type ApiResponse<T = unknown> = T;
 
 interface RefreshResponse {
   accessToken: string;
