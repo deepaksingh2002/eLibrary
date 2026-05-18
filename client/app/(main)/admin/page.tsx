@@ -2,49 +2,34 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
-import { useQuery } from "@tanstack/react-query";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area
 } from "recharts";
-import api from "../../../lib/api";
+import { api } from "../../../store/services/api";
 import { KPIStats, TrendPoint, GenreDistributionItem, GrowthPoint, AdminBook } from "../../../types";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
 import { toast } from "../../../components/ui/Toast";
+import { useAuthStore } from "../../../store/authStore";
 
 export default function AdminDashboardPage() {
   const [exporting, setExporting] = useState<"books" | "users" | null>(null);
 
-  const { data: kpis, isLoading: kpisLoading } = useQuery<KPIStats>({
-    queryKey: ["admin-kpis"],
-    queryFn: () => api.get("/api/admin/stats/kpis").then(r => r.data),
-    staleTime: 1000 * 60 * 5
-  });
+  const { data: kpisData, isLoading: kpisLoading } = api.useGetAdminKpisQuery();
+  const kpis = kpisData as KPIStats | undefined;
 
   const [trendPeriod, setTrendPeriod] = useState<"7d" | "30d" | "90d" | "12m">("30d");
-  const { data: trend, isLoading: trendLoading } = useQuery<{ trend: TrendPoint[]; period: string }>({
-    queryKey: ["admin-trend", trendPeriod],
-    queryFn: () => api.get(`/api/admin/stats/downloads-trend?period=${trendPeriod}`).then(r => r.data),
-    staleTime: 1000 * 60 * 5,
-  });
+  const { data: trendData, isLoading: trendLoading } = api.useGetAdminTrendQuery(trendPeriod);
+  const trend = trendData as { trend: TrendPoint[]; period: string } | undefined;
 
-  const { data: topBooks, isLoading: topBooksLoading } = useQuery<{ books: AdminBook[]; metric: string }>({
-    queryKey: ["admin-top-books"],
-    queryFn: () => api.get("/api/admin/stats/top-books?limit=10&metric=downloads").then(r => r.data),
-    staleTime: 1000 * 60 * 5,
-  });
+  const { data: topBooksData, isLoading: topBooksLoading } = api.useGetAdminTopBooksQuery();
+  const topBooks = topBooksData as { books: AdminBook[]; metric: string } | undefined;
 
-  const { data: genres, isLoading: genresLoading } = useQuery<{ distribution: GenreDistributionItem[]; total: number }>({
-    queryKey: ["admin-genres"],
-    queryFn: () => api.get("/api/admin/stats/genre-distribution").then(r => r.data),
-    staleTime: 1000 * 60 * 10,
-  });
+  const { data: genresData, isLoading: genresLoading } = api.useGetAdminGenresQuery();
+  const genres = genresData as { distribution: GenreDistributionItem[]; total: number } | undefined;
 
-  const { data: userGrowth, isLoading: userGrowthLoading } = useQuery<{ growth: GrowthPoint[]; period: string }>({
-    queryKey: ["admin-user-growth"],
-    queryFn: () => api.get("/api/admin/stats/user-growth?period=12m").then(r => r.data),
-    staleTime: 1000 * 60 * 10,
-  });
+  const { data: userGrowthData, isLoading: userGrowthLoading } = api.useGetAdminUserGrowthQuery();
+  const userGrowth = userGrowthData as { growth: GrowthPoint[]; period: string } | undefined;
 
   const COLORS = [
     "#2563EB", "#7C3AED", "#DC2626", "#D97706",
@@ -54,16 +39,21 @@ export default function AdminDashboardPage() {
   const downloadCsv = async (type: "books" | "users") => {
     setExporting(type);
     try {
-      const response = await api.get(`/api/admin/export/${type}?format=csv`, {
-        responseType: "blob",
+      const token = useAuthStore.getState().accessToken;
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/admin/export/${type}?format=csv`, {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+        },
       });
 
-      const contentDisposition = response.headers["content-disposition"];
-      const filenameMatch = /filename="?([^"]+)"?/i.exec(contentDisposition || "");
+      if (!response.ok) throw new Error("Export failed");
+
+      const contentDisposition = response.headers.get("content-disposition") || "";
+      const filenameMatch = /filename="?([^"]+)"?/i.exec(contentDisposition);
       const fallbackName = `elibrary-${type}-${new Date().toISOString().slice(0, 10)}.csv`;
       const filename = filenameMatch?.[1] || fallbackName;
 
-      const blob = new Blob([response.data], { type: "text/csv;charset=utf-8" });
+      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
