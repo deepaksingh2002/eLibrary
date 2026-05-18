@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import api from "../../../lib/api";
 import { useAuthStore } from "../../../store/authStore";
 import { Input } from "../../../components/ui/Input";
 import { Button } from "../../../components/ui/Button";
+import { useLoginMutation } from "../../../store/services/api";
+import { getApiErrorMessage } from "../../../lib/getApiErrorMessage";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -20,8 +21,10 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setAuth } = useAuthStore();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [login, loginState] = useLoginMutation();
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -30,12 +33,11 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormValues) => {
     setServerError(null);
     try {
-      const response = await api.post("/api/auth/login", data);
-      const { user, accessToken } = response.data;
+      const { user, accessToken } = await login(data).unwrap();
       setAuth(user, accessToken);
-      router.push("/");
+      router.push(searchParams.get("returnUrl") || "/");
     } catch (error: unknown) {
-      setServerError(typeof error === "string" ? error : (error as Error).message || "Login failed");
+      setServerError(getApiErrorMessage(error, "Login failed"));
     }
   };
 
@@ -81,7 +83,7 @@ export default function LoginPage() {
         )}
 
         <div>
-          <Button type="submit" className="w-full" isLoading={isSubmitting}>
+          <Button type="submit" className="w-full" isLoading={isSubmitting || loginState.isLoading}>
             Log in
           </Button>
         </div>
