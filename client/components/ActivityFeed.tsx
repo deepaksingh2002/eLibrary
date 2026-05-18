@@ -1,5 +1,4 @@
-import React from "react";
-import { DashboardData } from "../types";
+import type { DashboardData } from "../types"
 
 interface ActivityFeedProps {
   activities: DashboardData["recentActivity"];
