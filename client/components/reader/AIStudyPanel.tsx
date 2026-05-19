@@ -20,14 +20,14 @@ export default function AIStudyPanel({ bookId, bookTitle }: Props) {
 
   return (
     <>
-      <button onClick={openPanel} className="fixed bottom-6 right-6 z-40 bg-purple-600 text-white px-4 py-3 rounded-2xl shadow-lg shadow-purple-200 flex items-center gap-2 hover:bg-purple-700 hover:shadow-purple-300 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 font-medium text-sm">
+      <button onClick={openPanel} className="fixed bottom-10 right-4 md:bottom-6 md:right-6 z-[9999] bg-purple-600 text-white px-4 py-3 rounded-2xl shadow-lg shadow-purple-200 flex items-center gap-2 hover:bg-purple-700 hover:shadow-purple-300 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 font-medium text-sm">
         <span className="text-base">✨</span>
         AI Study
       </button>
 
-      {isOpen && <div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" onClick={closePanel} />}
+      {isOpen && <div className="fixed inset-0 bg-black/40 z-[9998] backdrop-blur-sm" onClick={closePanel} />}
 
-      <div className={`fixed top-0 right-0 h-full w-full max-w-md bg-white z-50 flex flex-col shadow-2xl transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}>
+      <div className={`fixed top-0 right-0 h-full w-full max-w-md bg-white z-[10000] flex flex-col shadow-2xl transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}>
         <div className="bg-purple-600 px-5 py-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>

@@ -40,7 +40,7 @@ router.get(
     }
 
     const book = await Book.findOne({ _id: bookId, isDeleted: false })
-      .select("title author genre description tags")
+      .select("title author genre description tags pdfUrl")
       .lean()
 
     if (!book) throw new ApiError(404, "Book not found")
@@ -52,7 +52,8 @@ router.get(
       author: book.author,
       genre: book.genre,
       description: book.description || "",
-      tags: book.tags || []
+      tags: book.tags || [],
+      pdfUrl: book.pdfUrl || undefined
     })
 
     await AIStudyCache.findOneAndUpdate(
@@ -82,7 +83,7 @@ router.get(
     }
 
     const book = await Book.findOne({ _id: bookId, isDeleted: false })
-      .select("title author genre description tags")
+      .select("title author genre description tags pdfUrl")
       .lean()
 
     if (!book) throw new ApiError(404, "Book not found")
@@ -94,7 +95,8 @@ router.get(
       author: book.author,
       genre: book.genre,
       description: book.description || "",
-      tags: book.tags || []
+      tags: book.tags || [],
+      pdfUrl: book.pdfUrl || undefined
     }, count)
 
     await AIStudyCache.findOneAndUpdate(
@@ -123,7 +125,7 @@ router.get(
     }
 
     const book = await Book.findOne({ _id: bookId, isDeleted: false })
-      .select("title author genre description tags")
+      .select("title author genre description tags pdfUrl")
       .lean()
 
     if (!book) throw new ApiError(404, "Book not found")
@@ -135,7 +137,8 @@ router.get(
       author: book.author,
       genre: book.genre,
       description: book.description || "",
-      tags: book.tags || []
+      tags: book.tags || [],
+      pdfUrl: book.pdfUrl || undefined
     })
 
     await AIStudyCache.findOneAndUpdate(

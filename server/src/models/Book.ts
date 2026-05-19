@@ -19,7 +19,7 @@ export interface IBook extends Document {
   publishedYear: string;
   publisher: string;
   pageCount: number;
-  importSource: "manual" | "google_books" | "open_library" | "smart_import" | "bulk_json";
+  importSource: "manual" | "google_books" | "open_library" | "smart_import" | "bulk_json" | "dbooks";
   externalId: string;
   uploadedBy: mongoose.Types.ObjectId;
   isDeleted: boolean;
@@ -48,7 +48,7 @@ const bookSchema = new Schema<IBook>({
   pageCount: { type: Number, default: 0 },
   importSource: {
     type: String,
-    enum: ["manual", "google_books", "open_library", "smart_import", "bulk_json"],
+    enum: ["manual", "google_books", "open_library", "smart_import", "bulk_json", "dbooks"],
     default: "manual"
   },
   externalId: { type: String, default: "" },

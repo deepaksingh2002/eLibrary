@@ -32,6 +32,33 @@ interface BookContext {
   genre: string
   description: string
   tags: string[]
+  pdfUrl?: string
+}
+
+const MAX_INLINE_PDF_BYTES = 15 * 1024 * 1024
+
+async function getPdfPart(pdfUrl?: string): Promise<any | null> {
+  if (!pdfUrl) return null;
+  try {
+    const pdfResponse = await fetch(pdfUrl)
+    if (!pdfResponse.ok) return null;
+    
+    const contentLength = Number(pdfResponse.headers.get("content-length") || 0)
+    if (contentLength > MAX_INLINE_PDF_BYTES) return null;
+
+    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer())
+    if (pdfBuffer.byteLength > MAX_INLINE_PDF_BYTES) return null;
+
+    return {
+      inlineData: {
+        data: pdfBuffer.toString("base64"),
+        mimeType: "application/pdf"
+      }
+    };
+  } catch (error) {
+    console.error("[AIStudy] Failed to fetch PDF:", error)
+    return null;
+  }
 }
 
 const FALLBACK_SUMMARY: BookSummary = {
@@ -89,7 +116,10 @@ Return this exact JSON structure:
   "estimatedTime": "Estimated reading time like '6-8 hours' or '10-12 hours'"
 }`
 
-    const result = await model.generateContent(prompt)
+    const pdfPart = await getPdfPart(book.pdfUrl);
+    const parts = pdfPart ? [pdfPart, { text: prompt }] : [{ text: prompt }];
+
+    const result = await model.generateContent(parts)
     const text = result.response.text().trim()
     const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
     const parsed = JSON.parse(clean)
@@ -128,7 +158,10 @@ Genre: ${book.genre} | Tags: ${book.tags.slice(0, 2).join(", ")}
 Desc: ${book.description?.slice(0, 400) || ""}
 Return JSON only: {"questions":[{"id":1,"question":"?","options":{"A":"","B":"","C":"","D":""},"correct":"A","explanation":""}]}`
 
-    const result = await model.generateContent(prompt)
+    const pdfPart = await getPdfPart(book.pdfUrl);
+    const parts = pdfPart ? [pdfPart, { text: prompt }] : [{ text: prompt }];
+
+    const result = await model.generateContent(parts)
     const text = result.response.text().trim()
     const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
     const parsed = JSON.parse(clean)
@@ -172,7 +205,10 @@ export async function generateKeyPoints(book: BookContext): Promise<KeyPoints> {
 Genre: ${book.genre}. Description: ${book.description?.slice(0, 300) || ""}
 Return JSON: {"chapters":[{"title":"Main Ideas","points":["key1","key2"]}],"glossary":[{"term":"t","definition":"d"}],"takeaways":["insight1"]}`
 
-    const result = await model.generateContent(prompt)
+    const pdfPart = await getPdfPart(book.pdfUrl);
+    const parts = pdfPart ? [pdfPart, { text: prompt }] : [{ text: prompt }];
+
+    const result = await model.generateContent(parts)
     const text = result.response.text().trim()
     const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
     const parsed = JSON.parse(clean)

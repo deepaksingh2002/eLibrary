@@ -43,9 +43,9 @@ function normalizeNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function normalizeImportSource(value: unknown): "manual" | "google_books" | "open_library" | "smart_import" | "bulk_json" {
+function normalizeImportSource(value: unknown): "manual" | "google_books" | "open_library" | "smart_import" | "bulk_json" | "dbooks" {
   const source = limitText(value, 30);
-  if (source === "google_books" || source === "open_library" || source === "smart_import" || source === "bulk_json") {
+  if (source === "google_books" || source === "open_library" || source === "smart_import" || source === "bulk_json" || source === "dbooks") {
     return source;
   }
 

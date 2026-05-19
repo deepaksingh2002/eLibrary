@@ -2,7 +2,7 @@ import axios from "axios";
 
 export interface ExternalBookResult {
   externalId: string;
-  source: "google_books" | "open_library";
+  source: "google_books" | "open_library" | "dbooks";
   title: string;
   author: string;
   description: string;
@@ -152,15 +152,67 @@ async function searchOpenLibrary(query: string, limit = 10): Promise<ExternalBoo
   }
 }
 
+async function searchDbooks(query: string, limit = 10): Promise<ExternalBookResult[]> {
+  try {
+    const encoded = encodeURIComponent(query);
+    const url = `https://www.dbooks.org/api/search/${encoded}`;
+    const response = await axios.get(url, { timeout: 5000 });
+    
+    if (response.data?.status !== "ok" || !Array.isArray(response.data?.books)) {
+      return [];
+    }
+
+    const books = response.data.books.slice(0, limit);
+    
+    const detailedBooksPromises = books.map(async (book: any) => {
+      try {
+        const detailResponse = await axios.get(`https://www.dbooks.org/api/book/${book.id}`, { timeout: 5000 });
+        const detail = detailResponse.data;
+        
+        if (detail.status !== "ok") return null;
+
+        return {
+          externalId: String(detail.id),
+          source: "dbooks" as const,
+          title: String(detail.title || "Unknown Title"),
+          author: String(detail.authors || "Unknown Author"),
+          description: String(detail.description || ""),
+          coverUrl: detail.image ? String(detail.image) : "",
+          genre: "Technology",
+          language: "en",
+          pageCount: parseInt(detail.pages) || 0,
+          publishedYear: String(detail.year || ""),
+          publisher: String(detail.publisher || ""),
+          isbn: String(detail.id),
+          pdfUrl: detail.download ? String(detail.download) : "",
+          previewUrl: detail.url ? String(detail.url) : "",
+          tags: ["Programming", "IT"]
+        } as ExternalBookResult;
+      } catch {
+        return null;
+      }
+    });
+
+    const results = await Promise.all(detailedBooksPromises);
+    return results.filter(Boolean) as ExternalBookResult[];
+  } catch {
+    return [];
+  }
+}
+
 export async function searchBooksOnline(query: string, limit = 12): Promise<ExternalBookResult[]> {
-  const [googleResults, openLibraryResults] = await Promise.allSettled([
+  const [googleResults, openLibraryResults, dbooksResults] = await Promise.allSettled([
     searchGoogleBooks(query, limit),
-    searchOpenLibrary(query, limit)
+    searchOpenLibrary(query, limit),
+    searchDbooks(query, limit)
   ]);
 
   const google = googleResults.status === "fulfilled" ? googleResults.value : [];
   const openLibrary = openLibraryResults.status === "fulfilled" ? openLibraryResults.value : [];
-  const combined = [...google, ...openLibrary];
+  const dbooks = dbooksResults.status === "fulfilled" ? dbooksResults.value : [];
+  
+  // Mix them: try to get dbooks first since they have PDFs!
+  const combined = [...dbooks, ...google, ...openLibrary];
   const seen = new Set<string>();
 
   return combined.filter((book) => {
