@@ -60,7 +60,7 @@ export default function ReadPage() {
   const book = bookData?.book;
 
   // Fetch saved progress (wait for hydration before enabling)
-  const { data: progressData, isLoading: isProgressLoading } = useGetReadingProgressQuery(id, {
+  const { data: progressData } = useGetReadingProgressQuery(id, {
     skip: !hasHydrated || !id || !isAuthenticated,
   });
 
@@ -72,7 +72,7 @@ export default function ReadPage() {
 
   // Load PDF document
   useEffect(() => {
-    if (!hasHydrated || !isAuthenticated || !id || isProgressLoading) return;
+    if (!hasHydrated || !isAuthenticated || !id) return;
 
     let isActive = true;
     setIsLoading(true);
@@ -93,7 +93,7 @@ export default function ReadPage() {
 
         const loadingTask = lib.getDocument({
           url: downloadUrl,
-          cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
+          cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${lib.version}/cmaps/`,
           cMapPacked: true,
         });
 
@@ -135,7 +135,7 @@ export default function ReadPage() {
     return () => {
       isActive = false;
     };
-  }, [id, hasHydrated, isAuthenticated, isProgressLoading, downloadBook]);
+  }, [id, hasHydrated, isAuthenticated, downloadBook]);
 
   // Render page
   const renderPage = useCallback(
