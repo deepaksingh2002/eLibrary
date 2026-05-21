@@ -10,7 +10,7 @@ export async function getPdfjsLib(): Promise<typeof PdfjsLib> {
   pdfjsLib = lib;
 
   if (typeof window !== "undefined") {
-    lib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${lib.version}/build/pdf.worker.min.mjs`;
+    lib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${lib.version}/build/pdf.worker.min.mjs`;
   }
 
   return lib;
