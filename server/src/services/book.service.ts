@@ -37,6 +37,15 @@ interface BookPayload {
   status?: string;
 }
 
+const AI_BOOK_FIELDS = [
+  "extractionStatus",
+  "extractionPages",
+  "extractionError",
+  "geminiFileUri",
+  "geminiMimeType",
+  "extractedAt"
+] as const;
+
 const VALID_STATUSES: BookStatus[] = ["draft", "published"];
 
 function escapeRegex(value: string): string {
@@ -123,6 +132,16 @@ function ensureBookFiles(files: FilesMap | undefined): { cover?: Express.Multer.
     cover: files?.cover?.[0],
     pdf: files?.pdf?.[0]
   };
+}
+
+// schedulePdfProcessing removed, background upload handled inline
+
+function sanitizeBookResponse<T extends Record<string, unknown>>(book: T): T {
+  const safeBook = { ...book };
+  for (const field of AI_BOOK_FIELDS) {
+    delete safeBook[field];
+  }
+  return safeBook;
 }
 
 export async function listBooks(query: BookListQuery, user?: AuthUser) {
@@ -254,7 +273,14 @@ export async function getBookById(id: string, user?: AuthUser) {
     filter.status = "published";
   }
 
-  const book = await Book.findOne(filter)
+  let query: any = Book.findOne(filter);
+  if (user?.role === "admin") {
+    query = query.select(
+      "title author description genre language tags coverUrl coverPublicId pdfUrl pdfPublicId status downloads avgRating totalReviews isbn publishedYear publisher pageCount importSource externalId uploadedBy isDeleted createdAt updatedAt extractionStatus extractionPages extractionError extractedAt geminiFileUri geminiMimeType"
+    );
+  }
+
+  const book = await query
     .populate("uploadedBy", "name email")
     .lean();
 
@@ -296,6 +322,12 @@ export async function createBook(payload: BookPayload, files: FilesMap | undefin
     const pdfResult = await uploadPdf(pdf);
     uploadedResources.push({ publicId: pdfResult.pdfPublicId, resourceType: "raw" });
 
+    // ── Upload to Gemini File API in background ────────────
+    // This runs after the book is created so it does not
+    // block the admin's upload response.
+    // Status starts as "pending" and updates to "ready" when done.
+    // ──────────────────────────────────────────────────────
+
     let coverUrl = "";
     let coverPublicId = "";
 
@@ -317,11 +349,70 @@ export async function createBook(payload: BookPayload, files: FilesMap | undefin
       coverPublicId,
       pdfUrl: pdfResult.pdfUrl,
       pdfPublicId: pdfResult.pdfPublicId,
+      extractionStatus: "pending",
+      extractionPages: 0,
+      extractionError: "",
+      extractedAt: new Date(),
       status,
       uploadedBy: user.id
     });
 
-    return { message: "Book created successfully", book };
+    // Background: upload to Gemini File API
+    const bookIdStr  = book._id.toString()
+    const bookTitle  = book.title
+    const pdfBuffer  = (files as any)?.pdf?.[0]?.buffer
+
+    if (pdfBuffer) {
+      setImmediate(async () => {
+        try {
+          console.log(
+            "[Book] Starting Gemini PDF upload for:", bookTitle
+          )
+
+          // Update status to uploading
+          await Book.findByIdAndUpdate(bookIdStr, {
+            extractionStatus: "uploading"
+          })
+
+          const { uploadPDFToGemini } =
+            await import("../services/geminiPDFService")
+
+          const result = await uploadPDFToGemini(
+            pdfBuffer,
+            `${bookTitle}.pdf`
+          )
+
+          if (result.success) {
+            await Book.findByIdAndUpdate(bookIdStr, {
+              geminiFileUri:    result.fileUri,
+              geminiMimeType:   result.mimeType,
+              extractionStatus: "ready",
+              extractedAt:      new Date()
+            })
+            console.log(
+              "[Book] Gemini PDF ready for:", bookTitle
+            )
+          } else {
+            await Book.findByIdAndUpdate(bookIdStr, {
+              extractionStatus: "failed",
+              extractionError:  result.error || "Upload failed"
+            })
+            console.error(
+              "[Book] Gemini upload failed for:", bookTitle,
+              result.error
+            )
+          }
+        } catch (err: any) {
+          await Book.findByIdAndUpdate(bookIdStr, {
+            extractionStatus: "failed",
+            extractionError:  err.message
+          })
+          console.error("[Book] Background upload error:", err.message)
+        }
+      })
+    }
+
+    return { message: "Book created successfully", book: sanitizeBookResponse(book.toObject() as unknown as Record<string, unknown>) };
   } catch (error) {
     await Promise.all(
       uploadedResources.map((resource) =>
@@ -392,6 +483,10 @@ export async function updateBook(id: string, payload: BookPayload, files: FilesM
       previousPdfPublicId = book.pdfPublicId;
       book.pdfUrl = pdfResult.pdfUrl;
       book.pdfPublicId = pdfResult.pdfPublicId;
+      book.extractionStatus = "pending";
+      book.extractionPages = 0;
+      book.extractionError = "";
+      book.extractedAt = undefined;
     }
 
     await book.save();
@@ -401,7 +496,46 @@ export async function updateBook(id: string, payload: BookPayload, files: FilesM
       previousPdfPublicId ? deleteFromCloudinary(previousPdfPublicId, "raw") : Promise.resolve()
     ]);
 
-    return { message: "Book updated successfully", book };
+    // Re-upload new PDF to Gemini in background
+    const newPdfBuffer = (files as any)?.pdf?.[0]?.buffer
+    const bookIdStr2   = id
+
+    if (newPdfBuffer) {
+      setImmediate(async () => {
+        try {
+          await Book.findByIdAndUpdate(bookIdStr2, {
+            geminiFileUri:    "",
+            extractionStatus: "uploading"
+          })
+
+          const { uploadPDFToGemini: reUpload } =
+            await import("../services/geminiPDFService")
+
+          const result = await reUpload(
+            newPdfBuffer,
+            `${book.title}.pdf`
+          )
+
+          if (result.success) {
+            await Book.findByIdAndUpdate(bookIdStr2, {
+              geminiFileUri:    result.fileUri,
+              geminiMimeType:   result.mimeType,
+              extractionStatus: "ready",
+              extractedAt:      new Date()
+            })
+          } else {
+            await Book.findByIdAndUpdate(bookIdStr2, {
+              extractionStatus: "failed",
+              extractionError:  result.error || ""
+            })
+          }
+        } catch (err: any) {
+          console.error("[Book] Re-upload error:", err.message)
+        }
+      })
+    }
+
+    return { message: "Book updated successfully", book: sanitizeBookResponse(book.toObject() as unknown as Record<string, unknown>) };
   } catch (error) {
     if (cover && book.coverPublicId && book.coverPublicId !== previousCoverPublicId) {
       await deleteFromCloudinary(book.coverPublicId, "image");

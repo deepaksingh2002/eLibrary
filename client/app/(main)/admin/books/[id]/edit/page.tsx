@@ -11,6 +11,7 @@ import { toast } from "../../../../../../components/ui/Toast";
 import {
   useGetBookQuery,
   useUpdateBookMutation,
+  useReExtractBookAiContentMutation,
 } from "../../../../../../store/services/api";
 
 interface Book {
@@ -24,6 +25,8 @@ interface Book {
   status: "published" | "draft";
   coverUrl?: string;
   pdfUrl: string;
+  extractionStatus?: "pending" | "uploading" | "ready" | "failed" | "no_pdf";
+  extractionPages?: number;
   createdAt: string;
   updatedAt?: string;
 }
@@ -47,6 +50,7 @@ export default function EditBookPage() {
 
   const { data: bookData, isLoading, error } = useGetBookQuery(bookId);
   const [updateBook, { isLoading: isUpdatingBook }] = useUpdateBookMutation();
+  const [reExtractBookAiContent, { isLoading: isReExtracting }] = useReExtractBookAiContentMutation();
 
   const [formData, setFormData] = useState<FormData>({
     title: "",
@@ -205,6 +209,54 @@ export default function EditBookPage() {
           <Link href="/admin/books">
             <Button variant="outline">Back to Books</Button>
           </Link>
+        </div>
+
+        <div className="rounded-2xl border border-gray-100 bg-white p-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs text-gray-400">AI Content Status</p>
+              <p className={`mt-1 text-sm font-semibold ${
+                book?.extractionStatus === "ready"
+                  ? "text-green-600"
+                  : book?.extractionStatus === "uploading"
+                    ? "text-blue-600"
+                  : book?.extractionStatus === "failed"
+                    ? "text-red-500"
+                    : book?.extractionStatus === "no_pdf"
+                      ? "text-gray-400"
+                      : "text-amber-500"
+              }`}>
+                {book?.extractionStatus === "ready"
+                  ? `✅ PDF uploaded to Gemini`
+                  : book?.extractionStatus === "uploading"
+                    ? "⏳ Uploading PDF to Gemini"
+                  : book?.extractionStatus === "failed"
+                    ? "❌ Gemini upload failed"
+                    : book?.extractionStatus === "no_pdf"
+                      ? "🚫 No PDF available"
+                      : "⏳ Not extracted yet"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const response = await reExtractBookAiContent(bookId).unwrap();
+                  toast.success(response.message || "PDF uploaded to Gemini");
+                } catch (err: unknown) {
+                  const message =
+                    typeof err === "object" && err !== null && "data" in err
+                      ? ((err as { data?: { message?: string } }).data?.message || "Upload failed")
+                      : "Re-extraction failed";
+                  toast.error(message);
+                }
+              }}
+              disabled={isReExtracting}
+              className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-purple-700 disabled:opacity-50"
+            >
+              {isReExtracting ? "Uploading..." : "Upload PDF to Gemini"}
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

@@ -114,3 +114,19 @@ The backend is configured for Render using `render.yaml`. Update the production 
 ## Documentation
 
 The repository now keeps the core project README only. Refer to the source code, environment examples, and deployment config in the `client/` and `server/` folders for setup details.
+
+## AI Study - Flashcards API
+
+Server endpoint: `GET /api/ai-study/:bookId/flashcards?count=8`
+
+- Auth: Protected (must include `Authorization: Bearer <token>`)
+- Returns JSON: `{ flashcards: [{ question, answer }], total, cached }`
+- Cached: responses cached for 24 hours in `AIStudyCache`.
+
+Client: the `AIStudyPanel` exposes a new "Flashcards" tab which calls the API when opened. The client hook is `useAIStudy(bookId)` and returns `flashcards` under the `flashcards` key.
+
+Example curl (replace host, token, and book id):
+
+```bash
+curl -H "Authorization: Bearer <TOKEN>" "http://localhost:5000/api/ai-study/<BOOK_ID>/flashcards?count=8"
+```
