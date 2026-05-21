@@ -81,9 +81,19 @@ export default function ReadPage() {
 
     const loadPDF = async () => {
       try {
-        const downloadRes = await downloadBook(id).unwrap();
-        const downloadUrl = downloadRes?.downloadUrl;
-        
+        let downloadUrl = "";
+
+        try {
+          const downloadRes = await downloadBook(id).unwrap();
+          downloadUrl = downloadRes?.downloadUrl || "";
+        } catch (downloadError) {
+          console.warn("[PDF] Download API failed, trying direct PDF URL:", downloadError);
+        }
+
+        if (!downloadUrl && book?.pdfUrl) {
+          downloadUrl = book.pdfUrl;
+        }
+
         if (!downloadUrl) {
           throw new Error("Failed to get download URL");
         }
@@ -135,7 +145,7 @@ export default function ReadPage() {
     return () => {
       isActive = false;
     };
-  }, [id, hasHydrated, isAuthenticated, downloadBook]);
+  }, [id, hasHydrated, isAuthenticated, downloadBook, book?.pdfUrl]);
 
   // Render page
   const renderPage = useCallback(
