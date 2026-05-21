@@ -44,6 +44,6 @@ services:
       - key: SMTP_PASS
         sync: false
       - key: SMTP_FROM
-        value: "eLibrary <noreply@elibrary.app>"
+        sync: false
       - key: GEMINI_API_KEY
         sync: false
