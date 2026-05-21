@@ -10,6 +10,7 @@ import {
   generateMCQQuestions,
   generateKeyPoints
 } from "../services/aiStudyService"
+import { isFileURIValid } from "../services/geminiPDFService"
 
 const router = Router()
 router.use(protect)
@@ -49,20 +50,29 @@ async function saveCache(
   type:   "summary" | "mcq" | "keypoints",
   data:   any
 ) {
-  await AIStudyCache.findOneAndUpdate(
-    {
-      bookId: new Types.ObjectId(bookId),
-      type
-    },
-    {
-      $set: {
-        data,
-        createdAt: new Date(),
-        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000)
-      }
-    },
-    { upsert: true }
-  )
+  try {
+    await AIStudyCache.findOneAndUpdate(
+      {
+        bookId: new Types.ObjectId(bookId),
+        type
+      },
+      {
+        $set: {
+          data,
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000)
+        }
+      },
+      { upsert: true }
+    )
+  } catch (err: any) {
+    // Ignore duplicate key race-condition (two concurrent upserts)
+    if (err && typeof err.code === "number" && err.code === 11000) {
+      console.warn(`[AIStudy] saveCache duplicate key for ${bookId} ${type}`)
+      return
+    }
+    console.error("[AIStudy] saveCache error:", err)
+  }
 }
 
 // ─────────────────────────────────────────────────────────
@@ -121,13 +131,27 @@ router.get(
     const book    = await getBook(bookId)
     console.log("[AIStudy] Generating summary:", (book as any).title)
 
-    const summary = await generateBookSummary(book as any)
+    let summary = await generateBookSummary(book as any)
+
+    // Safety guard: ensure we never send `null` back to the client.
+    if (!summary) {
+      console.error(`[AIStudy] generateBookSummary returned falsy for book ${bookId} (${(book as any).title})`)
+      summary = {
+        overview: "Could not generate a summary for this book.",
+        keyThemes: ["Summary generation failed"],
+        targetReader: "Unavailable",
+        difficulty: "Intermediate",
+        estimatedTime: "Unknown",
+        basedOnPDF: false
+      }
+    }
+
     await saveCache(bookId, "summary", summary)
 
     res.json({
       summary,
       cached:     false,
-      basedOnPDF: summary.basedOnPDF
+      basedOnPDF: summary.basedOnPDF || false
     })
   })
 )
@@ -292,6 +316,41 @@ router.post(
     res.status(500).json({
       message: result.error || "Upload failed",
       success: false
+    })
+  })
+)
+
+// ─────────────────────────────────────────────────────────
+// GET /api/ai-study/:bookId/debug  (Admin only)
+// Return book PDF/Gemini fields and file validity for debugging
+// ─────────────────────────────────────────────────────────
+router.get(
+  "/:bookId/debug",
+  asyncHandler(async (req, res) => {
+    if (req.user!.role !== "admin") {
+      throw new ApiError(403, "Admin only")
+    }
+
+    const { bookId } = req.params
+    if (!Types.ObjectId.isValid(bookId)) {
+      throw new ApiError(400, "Invalid book ID")
+    }
+
+    const book = await Book.findById(bookId)
+      .select(
+        "title author pdfUrl geminiFileUri geminiMimeType extractionStatus extractionError extractedAt"
+      )
+      .lean()
+
+    if (!book) throw new ApiError(404, "Book not found")
+
+    const isValid = (book as any).geminiFileUri
+      ? await isFileURIValid((book as any).geminiFileUri)
+      : false
+
+    res.json({
+      book,
+      isFileUriValid: isValid
     })
   })
 )

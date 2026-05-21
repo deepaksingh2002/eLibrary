@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import mongoose from "mongoose";
 import { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
+import multer from "multer";
 import { ApiError } from "../utils/ApiError";
 
 export const errorHandler = (
@@ -15,6 +16,21 @@ export const errorHandler = (
   if (err instanceof ApiError) {
     statusCode = err.statusCode;
     message = err.message;
+  } else if (err instanceof multer.MulterError) {
+    // Multer errors from file upload middleware
+    switch (err.code) {
+      case "LIMIT_FILE_SIZE":
+        statusCode = 413;
+        message = "File is too large. Please ensure uploads are under the allowed limit.";
+        break;
+      case "LIMIT_UNEXPECTED_FILE":
+        statusCode = 400;
+        message = "Unexpected file field in upload.";
+        break;
+      default:
+        statusCode = 400;
+        message = err.message || "File upload error";
+    }
   } else if (err instanceof mongoose.Error.ValidationError) {
     statusCode = 400;
     message = Object.values(err.errors)
