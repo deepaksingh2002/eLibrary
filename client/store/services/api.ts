@@ -68,6 +68,8 @@ interface AdminBookListItem {
   downloads: number;
   avgRating: number;
   totalReviews: number;
+  extractionStatus?: "pending" | "uploading" | "ready" | "failed" | "no_pdf";
+  extractionPages?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -202,6 +204,7 @@ interface AiStudySummaryResponse {
   summary?: StudySummary;
   cached?: boolean;
   cachedAt?: string;
+  basedOnPDF?: boolean;
 }
 
 interface AiStudyMcqResponse {
@@ -214,6 +217,7 @@ interface AiStudyMcqResponse {
   }>;
   total?: number;
   cached?: boolean;
+  basedOnPDF?: boolean;
 }
 
 interface StudyKeyPoints {
@@ -225,6 +229,7 @@ interface StudyKeyPoints {
 interface AiStudyKeyPointsResponse {
   keyPoints?: StudyKeyPoints;
   cached?: boolean;
+  basedOnPDF?: boolean;
 }
 
 interface SimilarBooksResponse {
@@ -457,6 +462,10 @@ export const api = createApi({
         return `/api/admin/books?${params.toString()}`;
       },
     }),
+    reExtractBookAiContent: builder.mutation<ApiResponse<{ message: string; success: boolean; fileUri?: string }>, string>({
+      query: (bookId) => ({ url: `/api/ai-study/${bookId}/upload-to-gemini`, method: "POST" }),
+      invalidatesTags: (_result, _error, bookId) => [{ type: "Book", id: bookId }, "Admin", "Books"],
+    }),
     toggleBookStatus: builder.mutation<ApiResponse<MessageResponse>, string>({
       query: (bookId) => ({ url: `/api/books/${bookId}/toggle-status`, method: "PATCH" }),
     }),
@@ -495,7 +504,6 @@ export const api = createApi({
     getAiStudyKeyPoints: builder.query<AiStudyKeyPointsResponse, string>({
       query: (bookId) => `/api/ai-study/${bookId}/key-points`,
     }),
-
     getReadingProgress: builder.query<ReadingProgressSnapshot, string>({
       query: (bookId) => `/api/progress/${bookId}`,
       transformResponse: (response: ReadingProgressResponse) => response.progress,
@@ -610,6 +618,7 @@ export const {
   useGetFlaggedReviewsQuery,
   useModerateReviewMutation,
   useGetAdminBooksQuery,
+  useReExtractBookAiContentMutation,
   useToggleBookStatusMutation,
   useDeleteBookMutation,
   useBulkImportBooksMutation,
