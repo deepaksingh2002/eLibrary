@@ -30,7 +30,7 @@ export async function getMonthlyGoalProgress(userId: string): Promise<{
 
   const percentage = Math.min(
     100,
-    Math.round((booksCompletedThisMonth / user.monthlyGoal) * 100)
+    Math.round((booksCompletedThisMonth / user.monthlyGoal) * 100),
   );
 
   return {

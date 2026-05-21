@@ -8,7 +8,9 @@ export const requireRole = (...roles: string[]) => {
     }
 
     if (!roles.includes(req.user.role)) {
-      return next(new ApiError(403, "You are not authorized to access this route"));
+      return next(
+        new ApiError(403, "You are not authorized to access this route"),
+      );
     }
 
     next();

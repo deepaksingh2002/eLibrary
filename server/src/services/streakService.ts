@@ -2,7 +2,9 @@ import { IUser, User } from "../models/User";
 
 export async function updateStreak(userId: string): Promise<void> {
   try {
-    const user = await User.findById(userId).select("streak longestStreak lastActiveDate");
+    const user = await User.findById(userId).select(
+      "streak longestStreak lastActiveDate",
+    );
 
     if (!user) return;
 

@@ -71,7 +71,7 @@ export async function uploadBufferToCloudinary(
     folder: string;
     resource_type: "image" | "raw" | "auto";
     public_id?: string;
-  }
+  },
 ): Promise<{ secure_url: string; public_id: string }> {
   return new Promise((resolve, reject) => {
     let uploadCompleted = false;
@@ -89,18 +89,22 @@ export async function uploadBufferToCloudinary(
         uploadCompleted = true;
 
         if (error) {
-          return reject(new Error(`Cloudinary upload failed: ${error.message}`));
+          return reject(
+            new Error(`Cloudinary upload failed: ${error.message}`),
+          );
         }
 
         if (!result) {
-          return reject(new Error("Cloudinary upload failed: no result returned"));
+          return reject(
+            new Error("Cloudinary upload failed: no result returned"),
+          );
         }
 
         resolve({
           secure_url: result.secure_url,
           public_id: result.public_id,
         });
-      }
+      },
     );
 
     uploadStream.on("error", (error) => {
@@ -114,7 +118,11 @@ export async function uploadBufferToCloudinary(
       if (!uploadCompleted) {
         uploadCompleted = true;
         uploadStream.destroy();
-        reject(new Error("File upload timed out. File may be too large or connection is slow."));
+        reject(
+          new Error(
+            "File upload timed out. File may be too large or connection is slow.",
+          ),
+        );
       }
     }, 180000);
 
@@ -128,7 +136,7 @@ export async function uploadBufferToCloudinary(
 
 export async function deleteFromCloudinary(
   publicId: string,
-  resourceType: "image" | "raw" = "image"
+  resourceType: "image" | "raw" = "image",
 ): Promise<void> {
   if (!publicId) return;
 
@@ -161,7 +169,10 @@ export function generateSignedUrl(publicId: string): string {
     });
 
     if (signedUrl) {
-      console.log("[Cloudinary] Successfully generated signed URL for:", publicId);
+      console.log(
+        "[Cloudinary] Successfully generated signed URL for:",
+        publicId,
+      );
       return signedUrl;
     }
   } catch (error) {

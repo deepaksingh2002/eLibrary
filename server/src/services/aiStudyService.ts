@@ -1,59 +1,56 @@
-import {
-  generateFromPDF,
-  getValidFileURI
-} from "./geminiPDFService"
+import { generateFromPDF, getValidFileURI } from "./geminiPDFService";
 
 // ─── Types ────────────────────────────────────────────────
 
 export interface BookSummary {
-  overview:      string
-  keyThemes:     string[]
-  targetReader:  string
-  difficulty:    "Beginner" | "Intermediate" | "Advanced"
-  estimatedTime: string
-  basedOnPDF:    boolean
+  overview: string;
+  keyThemes: string[];
+  targetReader: string;
+  difficulty: "Beginner" | "Intermediate" | "Advanced";
+  estimatedTime: string;
+  basedOnPDF: boolean;
 }
 
 export interface MCQQuestion {
-  id:          number
-  question:    string
+  id: number;
+  question: string;
   options: {
-    A: string
-    B: string
-    C: string
-    D: string
-  }
-  correct:     "A" | "B" | "C" | "D"
-  explanation: string
-  topic:       string
+    A: string;
+    B: string;
+    C: string;
+    D: string;
+  };
+  correct: "A" | "B" | "C" | "D";
+  explanation: string;
+  topic: string;
 }
 
 export interface KeyPoints {
   chapters: {
-    title:  string
-    points: string[]
-  }[]
+    title: string;
+    points: string[];
+  }[];
   glossary: {
-    term:       string
-    definition: string
-  }[]
-  takeaways:       string[]
-  examTips:        string[]
-  interviewTopics: string[]
-  basedOnPDF:      boolean
+    term: string;
+    definition: string;
+  }[];
+  takeaways: string[];
+  examTips: string[];
+  interviewTopics: string[];
+  basedOnPDF: boolean;
 }
 
 export interface BookForAI {
-  _id:              string
-  title:            string
-  author:           string
-  genre:            string
-  description:      string
-  tags:             string[]
-  pdfUrl:           string
-  geminiFileUri:    string
-  geminiMimeType:   string
-  extractionStatus: string
+  _id: string;
+  title: string;
+  author: string;
+  genre: string;
+  description: string;
+  tags: string[];
+  pdfUrl: string;
+  geminiFileUri: string;
+  geminiMimeType: string;
+  extractionStatus: string;
 }
 
 // ─── Safe JSON parser ─────────────────────────────────────
@@ -61,56 +58,56 @@ function parseJSON(text: string): any {
   const clean = text
     .replace(/```json\n?/g, "")
     .replace(/```\n?/g, "")
-    .trim()
-  return JSON.parse(clean)
+    .trim();
+  return JSON.parse(clean);
 }
 
 // ─── Fallback responses ───────────────────────────────────
 const FALLBACK_SUMMARY: BookSummary = {
-  overview:      "This book's PDF has not been processed yet. Please wait a few minutes after uploading, or ask an admin to check the PDF status.",
-  keyThemes:     ["PDF processing pending"],
-  targetReader:  "Unavailable",
-  difficulty:    "Intermediate",
+  overview:
+    "This book's PDF has not been processed yet. Please wait a few minutes after uploading, or ask an admin to check the PDF status.",
+  keyThemes: ["PDF processing pending"],
+  targetReader: "Unavailable",
+  difficulty: "Intermediate",
   estimatedTime: "Unknown",
-  basedOnPDF:    false
-}
+  basedOnPDF: false,
+};
 
 const FALLBACK_KEY_POINTS: KeyPoints = {
-  chapters:        [{ title: "Pending", points: ["PDF not yet processed"] }],
-  glossary:        [],
-  takeaways:       [],
-  examTips:        [],
+  chapters: [{ title: "Pending", points: ["PDF not yet processed"] }],
+  glossary: [],
+  takeaways: [],
+  examTips: [],
   interviewTopics: [],
-  basedOnPDF:      false
-}
+  basedOnPDF: false,
+};
 
 // ─────────────────────────────────────────────────────────
 // GENERATE BOOK SUMMARY
 // Gemini reads the actual PDF and summarizes it
 // ─────────────────────────────────────────────────────────
 export async function generateBookSummary(
-  book: BookForAI
+  book: BookForAI,
 ): Promise<BookSummary> {
-
   if (!process.env.GEMINI_API_KEY) {
-    return { ...FALLBACK_SUMMARY, overview: "GEMINI_API_KEY not configured" }
+    return { ...FALLBACK_SUMMARY, overview: "GEMINI_API_KEY not configured" };
   }
 
   // Get a valid Gemini file URI (re-uploads if expired)
   const fileInfo = await getValidFileURI({
-    _id:            book._id,
-    title:          book.title,
-    pdfUrl:         book.pdfUrl,
-    geminiFileUri:  book.geminiFileUri,
-    geminiMimeType: book.geminiMimeType
-  })
+    _id: book._id,
+    title: book.title,
+    pdfUrl: book.pdfUrl,
+    geminiFileUri: book.geminiFileUri,
+    geminiMimeType: book.geminiMimeType,
+  });
 
   if (!fileInfo.fileUri) {
     return {
       ...FALLBACK_SUMMARY,
-      overview: fileInfo.error ||
-        "Could not access PDF. Please re-upload the book."
-    }
+      overview:
+        fileInfo.error || "Could not access PDF. Please re-upload the book.",
+    };
   }
 
   const prompt = `You are an expert academic librarian.
@@ -132,38 +129,39 @@ Return ONLY valid JSON — no markdown, no extra text.
 }
 
 Be specific to the actual PDF content.
-Do not give generic answers based on the book title.`
+Do not give generic answers based on the book title.`;
 
   const result = await generateFromPDF({
-    fileUri:   fileInfo.fileUri,
-    mimeType:  fileInfo.mimeType,
+    fileUri: fileInfo.fileUri,
+    mimeType: fileInfo.mimeType,
     prompt,
-    maxTokens: 800
-  })
+    maxTokens: 800,
+  });
 
   if (!result.success || !result.text) {
-    console.error("[AIStudy] Summary generation failed:", result.error)
-    return FALLBACK_SUMMARY
+    console.error("[AIStudy] Summary generation failed:", result.error);
+    return FALLBACK_SUMMARY;
   }
 
   try {
-    const parsed = parseJSON(result.text)
+    const parsed = parseJSON(result.text);
     return {
-      overview:      parsed.overview     || FALLBACK_SUMMARY.overview,
-      keyThemes:     Array.isArray(parsed.keyThemes)
-                       ? parsed.keyThemes.slice(0, 6)
-                       : FALLBACK_SUMMARY.keyThemes,
-      targetReader:  parsed.targetReader || "",
-      difficulty:    ["Beginner","Intermediate","Advanced"]
-                       .includes(parsed.difficulty)
-                       ? parsed.difficulty
-                       : "Intermediate",
+      overview: parsed.overview || FALLBACK_SUMMARY.overview,
+      keyThemes: Array.isArray(parsed.keyThemes)
+        ? parsed.keyThemes.slice(0, 6)
+        : FALLBACK_SUMMARY.keyThemes,
+      targetReader: parsed.targetReader || "",
+      difficulty: ["Beginner", "Intermediate", "Advanced"].includes(
+        parsed.difficulty,
+      )
+        ? parsed.difficulty
+        : "Intermediate",
       estimatedTime: parsed.estimatedTime || "",
-      basedOnPDF:    true
-    }
+      basedOnPDF: true,
+    };
   } catch (err: any) {
-    console.error("[AIStudy] Summary parse error:", err.message)
-    return FALLBACK_SUMMARY
+    console.error("[AIStudy] Summary parse error:", err.message);
+    return FALLBACK_SUMMARY;
   }
 }
 
@@ -172,23 +170,22 @@ Do not give generic answers based on the book title.`
 // Gemini reads the PDF and creates questions from it
 // ─────────────────────────────────────────────────────────
 export async function generateMCQQuestions(
-  book:  BookForAI,
-  count = 10
+  book: BookForAI,
+  count = 10,
 ): Promise<MCQQuestion[]> {
-
-  if (!process.env.GEMINI_API_KEY) return []
+  if (!process.env.GEMINI_API_KEY) return [];
 
   const fileInfo = await getValidFileURI({
-    _id:            book._id,
-    title:          book.title,
-    pdfUrl:         book.pdfUrl,
-    geminiFileUri:  book.geminiFileUri,
-    geminiMimeType: book.geminiMimeType
-  })
+    _id: book._id,
+    title: book.title,
+    pdfUrl: book.pdfUrl,
+    geminiFileUri: book.geminiFileUri,
+    geminiMimeType: book.geminiMimeType,
+  });
 
   if (!fileInfo.fileUri) {
-    console.error("[AIStudy] No file URI for MCQ:", fileInfo.error)
-    return []
+    console.error("[AIStudy] No file URI for MCQ:", fileInfo.error);
+    return [];
   }
 
   const prompt = `You are an expert academic quiz creator.
@@ -220,67 +217,63 @@ Requirements:
 - Wrong options must be plausible but clearly incorrect per the text
 - Topics should reference actual chapter/section names from the PDF
 - Explanations must reference specific content from the PDF
-- Do NOT create generic questions not based on this specific PDF`
+- Do NOT create generic questions not based on this specific PDF`;
 
   const result = await generateFromPDF({
-    fileUri:   fileInfo.fileUri,
-    mimeType:  fileInfo.mimeType,
+    fileUri: fileInfo.fileUri,
+    mimeType: fileInfo.mimeType,
     prompt,
-    maxTokens: 3000
-  })
+    maxTokens: 3000,
+  });
 
   if (!result.success || !result.text) {
-    console.error("[AIStudy] MCQ generation failed:", result.error)
-    return []
+    console.error("[AIStudy] MCQ generation failed:", result.error);
+    return [];
   }
 
   try {
-    const parsed = parseJSON(result.text)
+    const parsed = parseJSON(result.text);
     return (parsed.questions || [])
       .slice(0, count)
       .map((q: any, i: number) => ({
-        id:          i + 1,
-        question:    q.question    || "",
+        id: i + 1,
+        question: q.question || "",
         options: {
           A: q.options?.A || "",
           B: q.options?.B || "",
           C: q.options?.C || "",
-          D: q.options?.D || ""
+          D: q.options?.D || "",
         },
-        correct:     ["A","B","C","D"].includes(q.correct)
-                       ? q.correct : "A",
+        correct: ["A", "B", "C", "D"].includes(q.correct) ? q.correct : "A",
         explanation: q.explanation || "",
-        topic:       q.topic       || "General"
+        topic: q.topic || "General",
       }))
-      .filter((q: MCQQuestion) =>
-        q.question.length > 10 && q.options.A.length > 2
-      )
+      .filter(
+        (q: MCQQuestion) => q.question.length > 10 && q.options.A.length > 2,
+      );
   } catch (err: any) {
-    console.error("[AIStudy] MCQ parse error:", err.message)
-    return []
+    console.error("[AIStudy] MCQ parse error:", err.message);
+    return [];
   }
 }
 
 // ─────────────────────────────────────────────────────────
 // GENERATE KEY POINTS + EXAM TIPS + INTERVIEW TOPICS
 // ─────────────────────────────────────────────────────────
-export async function generateKeyPoints(
-  book: BookForAI
-): Promise<KeyPoints> {
-
-  if (!process.env.GEMINI_API_KEY) return FALLBACK_KEY_POINTS
+export async function generateKeyPoints(book: BookForAI): Promise<KeyPoints> {
+  if (!process.env.GEMINI_API_KEY) return FALLBACK_KEY_POINTS;
 
   const fileInfo = await getValidFileURI({
-    _id:            book._id,
-    title:          book.title,
-    pdfUrl:         book.pdfUrl,
-    geminiFileUri:  book.geminiFileUri,
-    geminiMimeType: book.geminiMimeType
-  })
+    _id: book._id,
+    title: book.title,
+    pdfUrl: book.pdfUrl,
+    geminiFileUri: book.geminiFileUri,
+    geminiMimeType: book.geminiMimeType,
+  });
 
   if (!fileInfo.fileUri) {
-    console.error("[AIStudy] No file URI for key points:", fileInfo.error)
-    return FALLBACK_KEY_POINTS
+    console.error("[AIStudy] No file URI for key points:", fileInfo.error);
+    return FALLBACK_KEY_POINTS;
   }
 
   const prompt = `You are an expert academic tutor.
@@ -333,53 +326,51 @@ Requirements:
 - glossary: 8-15 terms that actually appear in the PDF
 - examTips: specific memorizable facts, formulas, algorithms from PDF
 - interviewTopics: conceptual understanding questions about this subject
-- ALL content must come from the actual PDF not general knowledge`
+- ALL content must come from the actual PDF not general knowledge`;
 
   const result = await generateFromPDF({
-    fileUri:   fileInfo.fileUri,
-    mimeType:  fileInfo.mimeType,
+    fileUri: fileInfo.fileUri,
+    mimeType: fileInfo.mimeType,
     prompt,
-    maxTokens: 2500
-  })
+    maxTokens: 2500,
+  });
 
   if (!result.success || !result.text) {
-    console.error("[AIStudy] Key points failed:", result.error)
-    return FALLBACK_KEY_POINTS
+    console.error("[AIStudy] Key points failed:", result.error);
+    return FALLBACK_KEY_POINTS;
   }
 
   try {
-    const parsed = parseJSON(result.text)
+    const parsed = parseJSON(result.text);
     return {
       chapters: Array.isArray(parsed.chapters)
         ? parsed.chapters.slice(0, 8).map((c: any) => ({
-            title:  c.title  || "Section",
-            points: Array.isArray(c.points)
-              ? c.points.slice(0, 5)
-              : []
+            title: c.title || "Section",
+            points: Array.isArray(c.points) ? c.points.slice(0, 5) : [],
           }))
         : FALLBACK_KEY_POINTS.chapters,
       glossary: Array.isArray(parsed.glossary)
         ? parsed.glossary
             .slice(0, 15)
             .map((g: any) => ({
-              term:       g.term       || "",
-              definition: g.definition || ""
+              term: g.term || "",
+              definition: g.definition || "",
             }))
             .filter((g: any) => g.term && g.definition)
         : [],
-      takeaways:       Array.isArray(parsed.takeaways)
-                         ? parsed.takeaways.slice(0, 6)
-                         : [],
-      examTips:        Array.isArray(parsed.examTips)
-                         ? parsed.examTips.slice(0, 8)
-                         : [],
+      takeaways: Array.isArray(parsed.takeaways)
+        ? parsed.takeaways.slice(0, 6)
+        : [],
+      examTips: Array.isArray(parsed.examTips)
+        ? parsed.examTips.slice(0, 8)
+        : [],
       interviewTopics: Array.isArray(parsed.interviewTopics)
-                         ? parsed.interviewTopics.slice(0, 8)
-                         : [],
-      basedOnPDF:      true
-    }
+        ? parsed.interviewTopics.slice(0, 8)
+        : [],
+      basedOnPDF: true,
+    };
   } catch (err: any) {
-    console.error("[AIStudy] Key points parse error:", err.message)
-    return FALLBACK_KEY_POINTS
+    console.error("[AIStudy] Key points parse error:", err.message);
+    return FALLBACK_KEY_POINTS;
   }
 }

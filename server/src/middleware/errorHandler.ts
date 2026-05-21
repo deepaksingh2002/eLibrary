@@ -8,7 +8,7 @@ export const errorHandler = (
   err: unknown,
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   let statusCode = 500;
   let message = "Internal Server Error";
@@ -21,7 +21,8 @@ export const errorHandler = (
     switch (err.code) {
       case "LIMIT_FILE_SIZE":
         statusCode = 413;
-        message = "File is too large. Please ensure uploads are under the allowed limit.";
+        message =
+          "File is too large. Please ensure uploads are under the allowed limit.";
         break;
       case "LIMIT_UNEXPECTED_FILE":
         statusCode = 400;
@@ -63,6 +64,8 @@ export const errorHandler = (
 
   res.status(statusCode).json({
     message,
-    ...(process.env.NODE_ENV === "development" && err instanceof Error ? { stack: err.stack } : {}),
+    ...(process.env.NODE_ENV === "development" && err instanceof Error
+      ? { stack: err.stack }
+      : {}),
   });
 };

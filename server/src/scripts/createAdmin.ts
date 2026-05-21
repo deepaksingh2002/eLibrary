@@ -11,7 +11,6 @@ const name = "Admin User";
 async function createAdmin() {
   const mongoUri = process.env.MONGO_URI?.trim();
 
-
   if (!mongoUri) {
     throw new Error("MONGO_URI is missing in server/.env");
   }
@@ -23,7 +22,9 @@ async function createAdmin() {
 
   try {
     const normalizedEmail = email.trim().toLowerCase();
-    const existingUser = await User.findOne({ email: normalizedEmail }).select("+passwordHash");
+    const existingUser = await User.findOne({ email: normalizedEmail }).select(
+      "+passwordHash",
+    );
 
     if (existingUser) {
       existingUser.name = name;

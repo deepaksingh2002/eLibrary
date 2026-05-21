@@ -30,7 +30,8 @@ async function searchOpenLibraryPdf(book: ExternalPdfBook): Promise<string> {
 
   for (const doc of docs) {
     const iaKey = Array.isArray(doc.ia) ? doc.ia[0] : doc.ia;
-    const hasEbook = doc.ebook_access === "public" || doc.ebook_access === "borrowable";
+    const hasEbook =
+      doc.ebook_access === "public" || doc.ebook_access === "borrowable";
 
     if (iaKey && hasEbook) {
       return buildArchivePdfUrl(iaKey);
@@ -40,7 +41,9 @@ async function searchOpenLibraryPdf(book: ExternalPdfBook): Promise<string> {
   return "";
 }
 
-async function searchInternetArchivePdf(book: ExternalPdfBook): Promise<string> {
+async function searchInternetArchivePdf(
+  book: ExternalPdfBook,
+): Promise<string> {
   try {
     if (!book.title) return "";
 
@@ -73,7 +76,9 @@ async function searchInternetArchivePdf(book: ExternalPdfBook): Promise<string> 
   }
 }
 
-export async function resolveExternalPdfUrl(book: ExternalPdfBook): Promise<string> {
+export async function resolveExternalPdfUrl(
+  book: ExternalPdfBook,
+): Promise<string> {
   if (book.pdfUrl) {
     return book.pdfUrl;
   }

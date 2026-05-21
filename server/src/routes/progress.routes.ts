@@ -34,9 +34,11 @@ router.patch(
     if (!book) throw new ApiError(404, "Book not found");
 
     const newStatus =
-      progressNum === 100 ? "completed" :
-      progressNum > 0 ? "in-progress" :
-      "not-started";
+      progressNum === 100
+        ? "completed"
+        : progressNum > 0
+          ? "in-progress"
+          : "not-started";
 
     const existing = await ReadingProgress.findOne({ userId, bookId });
     const wasAlreadyCompleted = existing?.status === "completed";
@@ -45,8 +47,8 @@ router.patch(
       $set: {
         progress: progressNum,
         status: newStatus,
-        lastRead: new Date()
-      }
+        lastRead: new Date(),
+      },
     };
 
     const sessionMins = Number(sessionMinutes) || 0;
@@ -55,8 +57,8 @@ router.patch(
         sessions: {
           startTime: new Date(Date.now() - sessionMins * 60_000),
           endTime: new Date(),
-          minutesRead: sessionMins
-        }
+          minutesRead: sessionMins,
+        },
       };
     }
 
@@ -67,36 +69,36 @@ router.patch(
         upsert: true,
         new: true,
         runValidators: true,
-        setDefaultsOnInsert: true
-      }
+        setDefaultsOnInsert: true,
+      },
     );
 
     if (sessionMins > 0) {
       await User.findByIdAndUpdate(userId, {
-        $inc: { totalMinutesRead: sessionMins }
+        $inc: { totalMinutesRead: sessionMins },
       });
     }
 
     if (progressNum === 100 && !wasAlreadyCompleted) {
       await User.findByIdAndUpdate(userId, {
-        $inc: { totalBooksRead: 1 }
+        $inc: { totalBooksRead: 1 },
       });
       logActivity({ userId, bookId, eventType: "complete" });
     }
 
     updateStreak(userId).catch((err) =>
-      console.error("[Progress] Streak update failed:", err)
+      console.error("[Progress] Streak update failed:", err),
     );
 
     logActivity({
       userId,
       bookId,
       eventType: "progress",
-      metadata: { progress: progressNum }
+      metadata: { progress: progressNum },
     });
 
     res.json({ progress: updated });
-  })
+  }),
 );
 
 router.get(
@@ -118,13 +120,13 @@ router.get(
           status: "not-started",
           sessions: [],
           bookmarks: [],
-          lastRead: null
-        }
+          lastRead: null,
+        },
       });
     }
 
     res.json({ progress });
-  })
+  }),
 );
 
 router.get(
@@ -144,18 +146,21 @@ router.get(
         .sort({ lastRead: -1 })
         .skip(skip)
         .limit(limit)
-        .populate("bookId", "title author coverUrl genre avgRating totalReviews")
+        .populate(
+          "bookId",
+          "title author coverUrl genre avgRating totalReviews",
+        )
         .lean(),
-      ReadingProgress.countDocuments(filter)
+      ReadingProgress.countDocuments(filter),
     ]);
 
     res.json({
       progressList,
       total,
       page,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.ceil(total / limit),
     });
-  })
+  }),
 );
 
 router.get(
@@ -166,7 +171,7 @@ router.get(
     const shelf = await ReadingProgress.find({
       userId,
       status: "in-progress",
-      progress: { $gt: 0, $lt: 100 }
+      progress: { $gt: 0, $lt: 100 },
     })
       .sort({ lastRead: -1 })
       .limit(10)
@@ -174,7 +179,7 @@ router.get(
       .lean();
 
     res.json({ shelf });
-  })
+  }),
 );
 
 router.get(
@@ -184,7 +189,7 @@ router.get(
 
     const completed = await ReadingProgress.find({
       userId,
-      status: "completed"
+      status: "completed",
     })
       .sort({ updatedAt: -1 })
       .limit(20)
@@ -192,7 +197,7 @@ router.get(
       .lean();
 
     res.json({ completed });
-  })
+  }),
 );
 
 router.post(
@@ -215,7 +220,7 @@ router.post(
         userId,
         bookId,
         progress: 0,
-        status: "not-started"
+        status: "not-started",
       });
     }
 
@@ -231,7 +236,7 @@ router.post(
     prog.bookmarks.push({
       page: Number(page),
       note: String(note).trim().slice(0, 500),
-      createdAt: new Date()
+      createdAt: new Date(),
     } as any);
     await prog.save();
 
@@ -239,9 +244,9 @@ router.post(
 
     res.status(201).json({
       bookmark: prog.bookmarks[prog.bookmarks.length - 1],
-      total: prog.bookmarks.length
+      total: prog.bookmarks.length,
     });
-  })
+  }),
 );
 
 router.get(
@@ -261,7 +266,7 @@ router.get(
     const sorted = [...(prog.bookmarks || [])].sort((a, b) => a.page - b.page);
 
     res.json({ bookmarks: sorted });
-  })
+  }),
 );
 
 router.patch(
@@ -271,7 +276,10 @@ router.patch(
     const userId = req.user!.id;
     const { note } = req.body;
 
-    if (!Types.ObjectId.isValid(bookId) || !Types.ObjectId.isValid(bookmarkId)) {
+    if (
+      !Types.ObjectId.isValid(bookId) ||
+      !Types.ObjectId.isValid(bookmarkId)
+    ) {
       throw new ApiError(400, "Invalid bookmark request");
     }
 
@@ -279,13 +287,15 @@ router.patch(
       {
         userId,
         bookId,
-        "bookmarks._id": new Types.ObjectId(bookmarkId)
+        "bookmarks._id": new Types.ObjectId(bookmarkId),
       },
       {
         $set: {
-          "bookmarks.$.note": String(note || "").trim().slice(0, 500)
-        }
-      }
+          "bookmarks.$.note": String(note || "")
+            .trim()
+            .slice(0, 500),
+        },
+      },
     );
 
     if (result.matchedCount === 0) {
@@ -293,7 +303,7 @@ router.patch(
     }
 
     res.json({ message: "Bookmark updated" });
-  })
+  }),
 );
 
 router.delete(
@@ -302,7 +312,10 @@ router.delete(
     const { bookId, bookmarkId } = req.params;
     const userId = req.user!.id;
 
-    if (!Types.ObjectId.isValid(bookId) || !Types.ObjectId.isValid(bookmarkId)) {
+    if (
+      !Types.ObjectId.isValid(bookId) ||
+      !Types.ObjectId.isValid(bookmarkId)
+    ) {
       throw new ApiError(400, "Invalid bookmark request");
     }
 
@@ -310,9 +323,9 @@ router.delete(
       { userId, bookId },
       {
         $pull: {
-          bookmarks: { _id: new Types.ObjectId(bookmarkId) }
-        }
-      }
+          bookmarks: { _id: new Types.ObjectId(bookmarkId) },
+        },
+      },
     );
 
     if (result.matchedCount === 0) {
@@ -320,7 +333,7 @@ router.delete(
     }
 
     res.json({ message: "Bookmark deleted" });
-  })
+  }),
 );
 
 export default router;

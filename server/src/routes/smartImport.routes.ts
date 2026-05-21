@@ -1,11 +1,19 @@
-import { Router } from "express"
-import { protect } from "../middleware/auth.middleware"
-import { requireRole } from "../middleware/rbac.middleware"
-import { asyncHandler } from "../utils/asyncHandler"
-import { ApiError } from "../utils/ApiError"
-import Book from "../models/Book"
-import { searchBooksOnline, getGoogleBookById, type ExternalBookResult } from "../services/bookSearchService"
-import { buildBaseEnhancedBookData, enhanceBookMetadata, enhanceBatch } from "../services/bookMetadataEnhancer"
+import { Router } from "express";
+import { protect } from "../middleware/auth.middleware";
+import { requireRole } from "../middleware/rbac.middleware";
+import { asyncHandler } from "../utils/asyncHandler";
+import { ApiError } from "../utils/ApiError";
+import Book from "../models/Book";
+import {
+  searchBooksOnline,
+  getGoogleBookById,
+  type ExternalBookResult,
+} from "../services/bookSearchService";
+import {
+  buildBaseEnhancedBookData,
+  enhanceBookMetadata,
+  enhanceBatch,
+} from "../services/bookMetadataEnhancer";
 
 const router = Router();
 
@@ -43,9 +51,23 @@ function normalizeNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function normalizeImportSource(value: unknown): "manual" | "google_books" | "open_library" | "smart_import" | "bulk_json" | "dbooks" {
+function normalizeImportSource(
+  value: unknown,
+):
+  | "manual"
+  | "google_books"
+  | "open_library"
+  | "smart_import"
+  | "bulk_json"
+  | "dbooks" {
   const source = limitText(value, 30);
-  if (source === "google_books" || source === "open_library" || source === "smart_import" || source === "bulk_json" || source === "dbooks") {
+  if (
+    source === "google_books" ||
+    source === "open_library" ||
+    source === "smart_import" ||
+    source === "bulk_json" ||
+    source === "dbooks"
+  ) {
     return source;
   }
 
@@ -63,12 +85,20 @@ router.get(
       throw new ApiError(400, "Search query must be at least 2 characters");
     }
 
-    const limitNum = Math.min(20, Math.max(1, parseInt(limit as string, 10) || 12))
+    const limitNum = Math.min(
+      20,
+      Math.max(1, parseInt(limit as string, 10) || 12),
+    );
 
-    const rawResults = await searchBooksOnline(q.trim(), limitNum)
+    const rawResults = await searchBooksOnline(q.trim(), limitNum);
 
     if (rawResults.length === 0) {
-      return res.json({ results: [], total: 0, query: q, message: "No books found for this query" });
+      return res.json({
+        results: [],
+        total: 0,
+        query: q,
+        message: "No books found for this query",
+      });
     }
 
     const toEnhance = rawResults.slice(0, 6);
@@ -76,8 +106,12 @@ router.get(
 
     const [enhanced, basicRest] = await Promise.all([
       enhanceBatch(toEnhance),
-      Promise.all(rest.map((book: ExternalBookResult) => Promise.resolve(buildBaseEnhancedBookData(book))))
-    ])
+      Promise.all(
+        rest.map((book: ExternalBookResult) =>
+          Promise.resolve(buildBaseEnhancedBookData(book)),
+        ),
+      ),
+    ]);
 
     const allResults = [...enhanced, ...basicRest];
 
@@ -88,20 +122,22 @@ router.get(
           : {
               title: {
                 $regex: `^${book.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-                $options: "i"
+                $options: "i",
               },
-              isDeleted: false
+              isDeleted: false,
             };
 
         const exists = await Book.exists(filter);
         return { ...book, alreadyExists: !!exists };
-      })
+      }),
     );
 
-    console.log(`[SmartImport] Found ${existingCheck.length} results for "${q}"`);
+    console.log(
+      `[SmartImport] Found ${existingCheck.length} results for "${q}"`,
+    );
 
     res.json({ results: existingCheck, total: existingCheck.length, query: q });
-  })
+  }),
 );
 
 router.get(
@@ -116,7 +152,7 @@ router.get(
 
     const enhanced = await enhanceBookMetadata(raw);
     res.json({ book: enhanced });
-  })
+  }),
 );
 
 router.post(
@@ -137,7 +173,7 @@ router.post(
       isbn,
       externalId,
       source,
-      status = "draft"
+      status = "draft",
     } = req.body;
 
     if (!title?.trim()) throw new ApiError(400, "Title is required");
@@ -148,11 +184,14 @@ router.post(
       : await Book.findOne({
           title: { $regex: `^${title.trim()}$`, $options: "i" },
           author: { $regex: author.trim(), $options: "i" },
-          isDeleted: false
+          isDeleted: false,
         });
 
     if (existing) {
-      throw new ApiError(409, `"${title}" by ${author} already exists in the library`);
+      throw new ApiError(
+        409,
+        `"${title}" by ${author} already exists in the library`,
+      );
     }
 
     const book = await Book.create({
@@ -176,7 +215,7 @@ router.post(
       publisher: limitText(publisher, 200),
       isbn: limitText(isbn, 32),
       importSource: normalizeImportSource(source),
-      externalId: externalId || ""
+      externalId: externalId || "",
     });
 
     res.status(201).json({
@@ -184,9 +223,9 @@ router.post(
       book,
       hasPdf: !!pdfUrl,
       needsPdf: !pdfUrl,
-      editUrl: `/admin/books/${book._id}/edit`
+      editUrl: `/admin/books/${book._id}/edit`,
     });
-  })
+  }),
 );
 
 router.post(
@@ -204,19 +243,22 @@ router.post(
     const results = {
       imported: 0,
       skipped: 0,
-      errors: [] as { title: string; reason: string }[]
+      errors: [] as { title: string; reason: string }[],
     };
 
     for (const bookData of books) {
       try {
         const exists = await Book.findOne({
           title: { $regex: `^${bookData.title}$`, $options: "i" },
-          isDeleted: false
+          isDeleted: false,
         });
 
         if (exists) {
           results.skipped++;
-          results.errors.push({ title: bookData.title, reason: "Already exists in library" });
+          results.errors.push({
+            title: bookData.title,
+            reason: "Already exists in library",
+          });
           continue;
         }
 
@@ -235,14 +277,14 @@ router.post(
           uploadedBy: req.user!.id,
           isbn: limitText(bookData.isbn, 32),
           importSource: normalizeImportSource(bookData.source),
-          externalId: bookData.externalId || ""
+          externalId: bookData.externalId || "",
         });
 
         results.imported++;
       } catch (error: any) {
         results.errors.push({
           title: bookData.title || "Unknown",
-          reason: error?.message || "Failed to create"
+          reason: error?.message || "Failed to create",
         });
       }
     }
@@ -251,9 +293,9 @@ router.post(
       message: `${results.imported} books imported, ${results.skipped} skipped`,
       imported: results.imported,
       skipped: results.skipped,
-      errors: results.errors
+      errors: results.errors,
     });
-  })
+  }),
 );
 
 export default router;

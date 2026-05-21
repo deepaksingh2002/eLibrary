@@ -19,7 +19,7 @@ export const sanitizeString = (str: string): string => {
  * Returns safe page, limit and pre-calculated skip.
  */
 export const paginationParams = (
-  query: Record<string, unknown>
+  query: Record<string, unknown>,
 ): { page: number; limit: number; skip: number } => {
   const page = Math.max(1, parseInt(query.page as string) || 1);
   const rawLimit = parseInt(query.limit as string) || 12;

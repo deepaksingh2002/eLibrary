@@ -14,7 +14,7 @@ import {
   summarizeBook as summarizeBookService,
   softDeleteBook,
   toggleBookStatus as toggleBookStatusService,
-  updateBook as updateBookService
+  updateBook as updateBookService,
 } from "../services/book.service";
 
 const isValidId = (id: string) => Types.ObjectId.isValid(id);
@@ -29,10 +29,12 @@ export const searchBooks = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json(data);
 });
 
-export const autocompleteBooks = asyncHandler(async (req: Request, res: Response) => {
-  const data = await autocompleteBooksService(req.query as { q?: string });
-  res.status(200).json(data);
-});
+export const autocompleteBooks = asyncHandler(
+  async (req: Request, res: Response) => {
+    const data = await autocompleteBooksService(req.query as { q?: string });
+    res.status(200).json(data);
+  },
+);
 
 export const getBookById = asyncHandler(async (req: Request, res: Response) => {
   if (!isValidId(req.params.id)) {
@@ -51,7 +53,7 @@ export const createBook = asyncHandler(async (req: Request, res: Response) => {
   const data = await createBookService(
     req.body as Record<string, unknown>,
     req.files as Record<string, Express.Multer.File[] | undefined> | undefined,
-    req.user
+    req.user,
   );
 
   res.status(201).json(data);
@@ -65,7 +67,7 @@ export const updateBook = asyncHandler(async (req: Request, res: Response) => {
   const data = await updateBookService(
     req.params.id,
     req.body as Record<string, unknown>,
-    req.files as Record<string, Express.Multer.File[] | undefined> | undefined
+    req.files as Record<string, Express.Multer.File[] | undefined> | undefined,
   );
 
   res.status(200).json(data);
@@ -80,64 +82,79 @@ export const deleteBook = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json(data);
 });
 
-export const permanentDeleteBook = asyncHandler(async (req: Request, res: Response) => {
-  if (!isValidId(req.params.id)) {
-    throw new ApiError(400, "Invalid book ID");
-  }
+export const permanentDeleteBook = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!isValidId(req.params.id)) {
+      throw new ApiError(400, "Invalid book ID");
+    }
 
-  const data = await hardDeleteBook(req.params.id);
-  res.status(200).json(data);
-});
-
-export const toggleBookStatus = asyncHandler(async (req: Request, res: Response) => {
-  if (!isValidId(req.params.id)) {
-    throw new ApiError(400, "Invalid book ID");
-  }
-
-  const data = await toggleBookStatusService(req.params.id);
-  res.status(200).json(data);
-});
-
-export const resolveBookPdf = asyncHandler(async (req: Request, res: Response) => {
-  if (!isValidId(req.params.id)) {
-    throw new ApiError(400, "Invalid book ID");
-  }
-
-  const data = await resolveBookPdfService(req.params.id);
-  res.status(200).json(data);
-});
-
-export const downloadBook = asyncHandler(async (req: Request, res: Response) => {
-  if (!isValidId(req.params.id)) {
-    throw new ApiError(400, "Invalid book ID");
-  }
-
-  if (!req.user) {
-    throw new ApiError(401, "Authentication required");
-  }
-
-  try {
-    console.log(`[BookController] Download request for book: ${req.params.id} by user: ${req.user.id}`);
-    const data = await downloadBookService(req.params.id, req.user);
-    console.log(`[BookController] Download URL returned for book ${req.params.id}:`, data?.downloadUrl ? data.downloadUrl.slice(0, 200) : data?.downloadUrl);
-    console.log(`[BookController] Download URL generated successfully`);
+    const data = await hardDeleteBook(req.params.id);
     res.status(200).json(data);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[BookController] Download error:`, message);
-    throw error;
-  }
-});
+  },
+);
 
-export const summarizeBook = asyncHandler(async (req: Request, res: Response) => {
-  if (!isValidId(req.params.id)) {
-    throw new ApiError(400, "Invalid book ID");
-  }
+export const toggleBookStatus = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!isValidId(req.params.id)) {
+      throw new ApiError(400, "Invalid book ID");
+    }
 
-  if (!req.user) {
-    throw new ApiError(401, "Authentication required");
-  }
+    const data = await toggleBookStatusService(req.params.id);
+    res.status(200).json(data);
+  },
+);
 
-  const data = await summarizeBookService(req.params.id);
-  res.status(200).json(data);
-});
+export const resolveBookPdf = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!isValidId(req.params.id)) {
+      throw new ApiError(400, "Invalid book ID");
+    }
+
+    const data = await resolveBookPdfService(req.params.id);
+    res.status(200).json(data);
+  },
+);
+
+export const downloadBook = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!isValidId(req.params.id)) {
+      throw new ApiError(400, "Invalid book ID");
+    }
+
+    if (!req.user) {
+      throw new ApiError(401, "Authentication required");
+    }
+
+    try {
+      console.log(
+        `[BookController] Download request for book: ${req.params.id} by user: ${req.user.id}`,
+      );
+      const data = await downloadBookService(req.params.id, req.user);
+      console.log(
+        `[BookController] Download URL returned for book ${req.params.id}:`,
+        data?.downloadUrl ? data.downloadUrl.slice(0, 200) : data?.downloadUrl,
+      );
+      console.log(`[BookController] Download URL generated successfully`);
+      res.status(200).json(data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[BookController] Download error:`, message);
+      throw error;
+    }
+  },
+);
+
+export const summarizeBook = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!isValidId(req.params.id)) {
+      throw new ApiError(400, "Invalid book ID");
+    }
+
+    if (!req.user) {
+      throw new ApiError(401, "Authentication required");
+    }
+
+    const data = await summarizeBookService(req.params.id);
+    res.status(200).json(data);
+  },
+);

@@ -1,51 +1,52 @@
-import { generateFlashcards } from "../src/services/aiStudyService"
+import {
+  generateBookSummary,
+  generateMCQQuestions,
+  generateKeyPoints,
+  type BookForAI,
+} from "../src/services/aiStudyService";
 
-// Mock the GoogleGenerativeAI module used by the service
-jest.mock("@google/generative-ai", () => {
-  return {
-    GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
-      getGenerativeModel: jest.fn(() => ({
-        generateContent: jest.fn(async (parts: any) => {
-          return {
-            response: {
-              text: () => JSON.stringify({ flashcards: [
-                { question: "What is X?", answer: "X is ..." },
-                { question: "Define Y.", answer: "Y is ..." }
-              ]})
-            }
-          }
-        })
-      }))
-    }))
-  }
-})
+const TEST_BOOK: BookForAI = {
+  _id: "book-1",
+  title: "Test Book",
+  author: "Author",
+  genre: "Test",
+  description: "Desc",
+  tags: [],
+  pdfUrl: "",
+  geminiFileUri: "",
+  geminiMimeType: "application/pdf",
+  extractionStatus: "pending",
+};
 
-// Provide a simple fetch mock (for getPdfPart)
-global.fetch = jest.fn(async (url: any) => ({
-  ok: true,
-  headers: new Map([['content-length', '0']]),
-  arrayBuffer: async () => new ArrayBuffer(0)
-})) as any
+describe("AI Study Service fallbacks", () => {
+  const oldGeminiApiKey = process.env.GEMINI_API_KEY;
 
-describe('AI Study Service - flashcards', () => {
-  const OLD = process.env.GEMINI_API_KEY
-  beforeAll(() => { process.env.GEMINI_API_KEY = 'test' })
-  afterAll(() => { process.env.GEMINI_API_KEY = OLD })
+  beforeAll(() => {
+    delete process.env.GEMINI_API_KEY;
+  });
 
-  test('generateFlashcards returns array of flashcards', async () => {
-    const cards = await generateFlashcards({
-      title: 'Test Book',
-      author: 'Author',
-      genre: 'Test',
-      description: 'Desc',
-      tags: [],
-      pdfUrl: '',
-      pdfPublicId: '',
-    }, 5)
+  afterAll(() => {
+    process.env.GEMINI_API_KEY = oldGeminiApiKey;
+  });
 
-    expect(Array.isArray(cards)).toBe(true)
-    expect(cards.length).toBeGreaterThan(0)
-    expect(cards[0]).toHaveProperty('question')
-    expect(cards[0]).toHaveProperty('answer')
-  })
-})
+  test("generateBookSummary returns fallback when GEMINI_API_KEY is missing", async () => {
+    const summary = await generateBookSummary(TEST_BOOK);
+
+    expect(summary.basedOnPDF).toBe(false);
+    expect(summary.overview).toContain("GEMINI_API_KEY not configured");
+  });
+
+  test("generateMCQQuestions returns empty array when GEMINI_API_KEY is missing", async () => {
+    const questions = await generateMCQQuestions(TEST_BOOK, 5);
+
+    expect(Array.isArray(questions)).toBe(true);
+    expect(questions).toHaveLength(0);
+  });
+
+  test("generateKeyPoints returns fallback when GEMINI_API_KEY is missing", async () => {
+    const keyPoints = await generateKeyPoints(TEST_BOOK);
+
+    expect(keyPoints.basedOnPDF).toBe(false);
+    expect(keyPoints.chapters[0]?.title).toBe("Pending");
+  });
+});

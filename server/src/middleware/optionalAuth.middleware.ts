@@ -6,7 +6,11 @@ type AccessTokenPayload = {
   role: "admin" | "user" | "guest";
 };
 
-export const optionalAuth = (req: Request, res: Response, next: NextFunction): void => {
+export const optionalAuth = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -21,7 +25,10 @@ export const optionalAuth = (req: Request, res: Response, next: NextFunction): v
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as AccessTokenPayload;
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_ACCESS_SECRET!,
+    ) as AccessTokenPayload;
     req.user = { id: decoded.id, role: decoded.role };
   } catch {
     // Public routes should remain accessible even with a bad token.

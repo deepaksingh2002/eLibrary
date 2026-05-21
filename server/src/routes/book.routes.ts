@@ -12,7 +12,7 @@ import {
   searchBooks,
   summarizeBook,
   toggleBookStatus,
-  updateBook
+  updateBook,
 } from "../controllers/book.controller";
 import { protect } from "../middleware/auth.middleware";
 import { optionalAuth } from "../middleware/optionalAuth.middleware";
@@ -29,10 +29,26 @@ router.get("/:id/summary", protect, summarizeBook);
 router.post("/:id/download", protect, downloadBook);
 
 router.post("/", protect, requireRole("admin"), uploadBookFiles, createBook);
-router.patch("/:id", protect, requireRole("admin"), uploadBookFiles, updateBook);
+router.patch(
+  "/:id",
+  protect,
+  requireRole("admin"),
+  uploadBookFiles,
+  updateBook,
+);
 router.delete("/:id", protect, requireRole("admin"), deleteBook);
-router.delete("/:id/permanent", protect, requireRole("admin"), permanentDeleteBook);
-router.patch("/:id/toggle-status", protect, requireRole("admin"), toggleBookStatus);
+router.delete(
+  "/:id/permanent",
+  protect,
+  requireRole("admin"),
+  permanentDeleteBook,
+);
+router.patch(
+  "/:id/toggle-status",
+  protect,
+  requireRole("admin"),
+  toggleBookStatus,
+);
 router.post("/:id/resolve-pdf", protect, requireRole("admin"), resolveBookPdf);
 
 export default router;

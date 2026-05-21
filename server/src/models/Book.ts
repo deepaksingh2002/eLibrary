@@ -1,6 +1,11 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-export type BookExtractionStatus = "pending" | "uploading" | "ready" | "failed" | "no_pdf";
+export type BookExtractionStatus =
+  | "pending"
+  | "uploading"
+  | "ready"
+  | "failed"
+  | "no_pdf";
 
 export interface IBook extends Document {
   title: string;
@@ -27,7 +32,13 @@ export interface IBook extends Document {
   publishedYear: string;
   publisher: string;
   pageCount: number;
-  importSource: "manual" | "google_books" | "open_library" | "smart_import" | "bulk_json" | "dbooks";
+  importSource:
+    | "manual"
+    | "google_books"
+    | "open_library"
+    | "smart_import"
+    | "bulk_json"
+    | "dbooks";
   externalId: string;
   uploadedBy: mongoose.Types.ObjectId;
   isDeleted: boolean;
@@ -35,63 +46,76 @@ export interface IBook extends Document {
   updatedAt?: Date;
 }
 
-const bookSchema = new Schema<IBook>({
-  title: { type: String, required: true, trim: true },
-  author: { type: String, required: true, trim: true },
-  description: { type: String, maxlength: 2000, default: "" },
-  genre: { type: String, required: true, trim: true },
-  language: { type: String, default: "en" },
-  tags: { type: [{ type: String }], default: [] },
-  coverUrl: { type: String, default: "" },
-  coverPublicId: { type: String, default: "" },
-  pdfUrl: { type: String, default: "" },
-  pdfPublicId: { type: String, default: "" },
-  extractionStatus: {
-    type:    String,
-    enum:    ["pending", "uploading", "ready", "failed", "no_pdf"],
-    default: "pending"
+const bookSchema = new Schema<IBook>(
+  {
+    title: { type: String, required: true, trim: true },
+    author: { type: String, required: true, trim: true },
+    description: { type: String, maxlength: 2000, default: "" },
+    genre: { type: String, required: true, trim: true },
+    language: { type: String, default: "en" },
+    tags: { type: [{ type: String }], default: [] },
+    coverUrl: { type: String, default: "" },
+    coverPublicId: { type: String, default: "" },
+    pdfUrl: { type: String, default: "" },
+    pdfPublicId: { type: String, default: "" },
+    extractionStatus: {
+      type: String,
+      enum: ["pending", "uploading", "ready", "failed", "no_pdf"],
+      default: "pending",
+    },
+    extractionPages: {
+      type: Number,
+      default: 0,
+    },
+    extractionError: {
+      type: String,
+      default: "",
+    },
+    geminiFileUri: {
+      type: String,
+      default: "",
+    },
+    geminiMimeType: {
+      type: String,
+      default: "application/pdf",
+    },
+    extractedAt: {
+      type: Date,
+    },
+    status: { type: String, enum: ["draft", "published"], default: "draft" },
+    downloads: { type: Number, default: 0 },
+    avgRating: { type: Number, default: 0, min: 0, max: 5 },
+    totalReviews: { type: Number, default: 0 },
+    isbn: { type: String, default: "" },
+    publishedYear: { type: String, default: "" },
+    publisher: { type: String, default: "" },
+    pageCount: { type: Number, default: 0 },
+    importSource: {
+      type: String,
+      enum: [
+        "manual",
+        "google_books",
+        "open_library",
+        "smart_import",
+        "bulk_json",
+        "dbooks",
+      ],
+      default: "manual",
+    },
+    externalId: { type: String, default: "" },
+    uploadedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    isDeleted: { type: Boolean, default: false },
   },
-  extractionPages: {
-    type:    Number,
-    default: 0
-  },
-  extractionError: {
-    type:    String,
-    default: ""
-  },
-  geminiFileUri: {
-    type:    String,
-    default: ""
-  },
-  geminiMimeType: {
-    type:    String,
-    default: "application/pdf"
-  },
-  extractedAt: {
-    type: Date
-  },
-  status: { type: String, enum: ["draft", "published"], default: "draft" },
-  downloads: { type: Number, default: 0 },
-  avgRating: { type: Number, default: 0, min: 0, max: 5 },
-  totalReviews: { type: Number, default: 0 },
-  isbn: { type: String, default: "" },
-  publishedYear: { type: String, default: "" },
-  publisher: { type: String, default: "" },
-  pageCount: { type: Number, default: 0 },
-  importSource: {
-    type: String,
-    enum: ["manual", "google_books", "open_library", "smart_import", "bulk_json", "dbooks"],
-    default: "manual"
-  },
-  externalId: { type: String, default: "" },
-  uploadedBy: { type: Schema.Types.ObjectId, ref: "User" },
-  isDeleted: { type: Boolean, default: false },
-}, { timestamps: true });
+  { timestamps: true },
+);
 
 // --- Text Search Index (with weights for relevance scoring) ---
 bookSchema.index(
   { title: "text", author: "text", description: "text" },
-  { weights: { title: 10, author: 5, description: 1 }, name: "book_text_search" }
+  {
+    weights: { title: 10, author: 5, description: 1 },
+    name: "book_text_search",
+  },
 );
 
 // --- Standard performance indexes ---

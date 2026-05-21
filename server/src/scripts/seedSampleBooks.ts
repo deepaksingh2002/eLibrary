@@ -86,7 +86,10 @@ async function seedSampleBooks() {
     }));
 
     const result = await Book.bulkWrite(operations);
-    const totalPublishedBooks = await Book.countDocuments({ status: "published", isDeleted: false });
+    const totalPublishedBooks = await Book.countDocuments({
+      status: "published",
+      isDeleted: false,
+    });
 
     console.log("Sample books seeded.");
     console.log(`Inserted: ${result.upsertedCount}`);

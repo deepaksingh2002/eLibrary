@@ -17,7 +17,7 @@ const STANDARD_GENRES = [
   "Law",
   "Economics",
   "Psychology",
-  "Other"
+  "Other",
 ];
 
 export interface EnhancedBookData {
@@ -75,7 +75,7 @@ function mapGenreBasic(rawGenre: string): string {
     law: "Law",
     legal: "Law",
     psychology: "Psychology",
-    "self-help": "Psychology"
+    "self-help": "Psychology",
   };
 
   for (const [keyword, genre] of Object.entries(map)) {
@@ -106,17 +106,22 @@ function normalizeLanguage(lang: string): string {
     french: "fr",
     ger: "de",
     de: "de",
-    german: "de"
+    german: "de",
   };
 
   return map[lower] || "en";
 }
 
 function stripMarkdownFences(text: string): string {
-  return text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  return text
+    .replace(/```json\n?/g, "")
+    .replace(/```\n?/g, "")
+    .trim();
 }
 
-export function buildBaseEnhancedBookData(book: ExternalBookResult): EnhancedBookData {
+export function buildBaseEnhancedBookData(
+  book: ExternalBookResult,
+): EnhancedBookData {
   return {
     title: book.title,
     author: book.author,
@@ -133,11 +138,13 @@ export function buildBaseEnhancedBookData(book: ExternalBookResult): EnhancedBoo
     isbn: book.isbn,
     source: book.source,
     externalId: book.externalId,
-    aiEnhanced: false
+    aiEnhanced: false,
   };
 }
 
-export async function enhanceBookMetadata(book: ExternalBookResult): Promise<EnhancedBookData> {
+export async function enhanceBookMetadata(
+  book: ExternalBookResult,
+): Promise<EnhancedBookData> {
   const base = buildBaseEnhancedBookData(book);
 
   if (!process.env.GEMINI_API_KEY) {
@@ -150,8 +157,8 @@ export async function enhanceBookMetadata(book: ExternalBookResult): Promise<Enh
       generationConfig: {
         maxOutputTokens: 500,
         temperature: 0.3,
-        responseMimeType: "application/json"
-      }
+        responseMimeType: "application/json",
+      },
     });
 
     const prompt = `You are a library cataloguing assistant.
@@ -196,51 +203,69 @@ Return this exact JSON structure:
     return {
       ...base,
       genre: STANDARD_GENRES.includes(parsed.genre) ? parsed.genre : base.genre,
-      description: typeof parsed.description === "string" && parsed.description.trim() ? parsed.description.trim() : base.description,
+      description:
+        typeof parsed.description === "string" && parsed.description.trim()
+          ? parsed.description.trim()
+          : base.description,
       tags: Array.isArray(parsed.tags)
-        ? parsed.tags.map((tag: string) => tag.toLowerCase().trim()).filter(Boolean).slice(0, 8)
+        ? parsed.tags
+            .map((tag: string) => tag.toLowerCase().trim())
+            .filter(Boolean)
+            .slice(0, 8)
         : base.tags,
-      author: typeof parsed.author === "string" && parsed.author.trim() ? parsed.author.trim() : base.author,
-      aiEnhanced: true
+      author:
+        typeof parsed.author === "string" && parsed.author.trim()
+          ? parsed.author.trim()
+          : base.author,
+      aiEnhanced: true,
     };
   } catch (error: any) {
-    console.error("[BookMetadata] AI enhancement failed:", error?.message || error);
+    console.error(
+      "[BookMetadata] AI enhancement failed:",
+      error?.message || error,
+    );
     return base;
   }
 }
 
-export async function enhanceBatch(books: ExternalBookResult[]): Promise<EnhancedBookData[]> {
+export async function enhanceBatch(
+  books: ExternalBookResult[],
+): Promise<EnhancedBookData[]> {
   const results: EnhancedBookData[] = [];
   const batchSize = 3;
 
   for (let index = 0; index < books.length; index += batchSize) {
     const batch = books.slice(index, index + batchSize);
-    const enhanced = await Promise.all(batch.map(async (book) => {
-      const result = await enhanceBookMetadata(book);
-      
-      // Try to resolve PDF for books without one (especially Google Books)
-      if (!result.pdfUrl) {
-        try {
-          const resolvedPdf = await resolveExternalPdfUrl({
-            title: result.title,
-            author: result.author,
-            isbn: result.isbn,
-            importSource: result.source,
-            externalId: result.externalId,
-            pdfUrl: result.pdfUrl
-          });
-          
-          if (resolvedPdf) {
-            result.pdfUrl = resolvedPdf;
-            console.log(`[BookMetadata] Resolved PDF for "${result.title}": ${resolvedPdf.substring(0, 50)}...`);
+    const enhanced = await Promise.all(
+      batch.map(async (book) => {
+        const result = await enhanceBookMetadata(book);
+
+        // Try to resolve PDF for books without one (especially Google Books)
+        if (!result.pdfUrl) {
+          try {
+            const resolvedPdf = await resolveExternalPdfUrl({
+              title: result.title,
+              author: result.author,
+              isbn: result.isbn,
+              importSource: result.source,
+              externalId: result.externalId,
+              pdfUrl: result.pdfUrl,
+            });
+
+            if (resolvedPdf) {
+              result.pdfUrl = resolvedPdf;
+              console.log(
+                `[BookMetadata] Resolved PDF for "${result.title}": ${resolvedPdf.substring(0, 50)}...`,
+              );
+            }
+          } catch (error: any) {
+            // Silently continue if PDF resolution fails
           }
-        } catch (error: any) {
-          // Silently continue if PDF resolution fails
         }
-      }
-      
-      return result;
-    }));
+
+        return result;
+      }),
+    );
     results.push(...enhanced);
 
     if (index + batchSize < books.length) {

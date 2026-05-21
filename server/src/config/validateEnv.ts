@@ -13,7 +13,12 @@ const REQUIRED_ENV_VARS = [
   "PASSWORD_RESET_EXPIRES_MINUTES",
 ] as const;
 
-const OPTIONAL_SMTP_VARS = ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"] as const;
+const OPTIONAL_SMTP_VARS = [
+  "SMTP_HOST",
+  "SMTP_USER",
+  "SMTP_PASS",
+  "SMTP_FROM",
+] as const;
 
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -26,12 +31,17 @@ function requireEnv(name: string): string {
 function ensureValidUrl(name: string): void {
   const value = requireEnv(name);
   // allow comma-separated list of origins
-  const parts = value.split(",").map((s) => s.trim()).filter(Boolean);
+  const parts = value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   for (const part of parts) {
     try {
       new URL(part);
     } catch {
-      throw new Error(`Environment variable ${name} contains an invalid URL: ${part}`);
+      throw new Error(
+        `Environment variable ${name} contains an invalid URL: ${part}`,
+      );
     }
   }
 }
@@ -43,7 +53,9 @@ export function validateEnv(): void {
 
   const mongoUri = requireEnv("MONGO_URI");
   if (!/^mongodb(\+srv)?:\/\//.test(mongoUri)) {
-    throw new Error("Environment variable MONGO_URI must start with mongodb:// or mongodb+srv://");
+    throw new Error(
+      "Environment variable MONGO_URI must start with mongodb:// or mongodb+srv://",
+    );
   }
 
   const portValue = process.env.PORT?.trim();
@@ -56,11 +68,15 @@ export function validateEnv(): void {
 
   const nodeEnv = requireEnv("NODE_ENV");
   if (!["development", "production", "test"].includes(nodeEnv)) {
-    throw new Error("Environment variable NODE_ENV must be development, production, or test");
+    throw new Error(
+      "Environment variable NODE_ENV must be development, production, or test",
+    );
   }
 
   if (requireEnv("JWT_ACCESS_SECRET") === requireEnv("JWT_REFRESH_SECRET")) {
-    throw new Error("JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different values");
+    throw new Error(
+      "JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different values",
+    );
   }
 
   // FRONTEND_URL may be a comma-separated list of allowed frontend origins.
@@ -80,18 +96,31 @@ export function validateEnv(): void {
   if (smtpPortValue) {
     const smtpPort = Number(smtpPortValue);
     if (!Number.isInteger(smtpPort) || smtpPort <= 0) {
-      throw new Error("Environment variable SMTP_PORT must be a positive integer");
+      throw new Error(
+        "Environment variable SMTP_PORT must be a positive integer",
+      );
     }
   }
 
-  const passwordResetMinutes = Number(requireEnv("PASSWORD_RESET_EXPIRES_MINUTES"));
+  const passwordResetMinutes = Number(
+    requireEnv("PASSWORD_RESET_EXPIRES_MINUTES"),
+  );
   if (!Number.isInteger(passwordResetMinutes) || passwordResetMinutes <= 0) {
-    throw new Error("Environment variable PASSWORD_RESET_EXPIRES_MINUTES must be a positive integer");
+    throw new Error(
+      "Environment variable PASSWORD_RESET_EXPIRES_MINUTES must be a positive integer",
+    );
   }
 
-  const configuredSmtpVars = OPTIONAL_SMTP_VARS.filter((name) => process.env[name]?.trim());
-  if (configuredSmtpVars.length > 0 && configuredSmtpVars.length < OPTIONAL_SMTP_VARS.length) {
-    throw new Error("SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM must be configured together");
+  const configuredSmtpVars = OPTIONAL_SMTP_VARS.filter((name) =>
+    process.env[name]?.trim(),
+  );
+  if (
+    configuredSmtpVars.length > 0 &&
+    configuredSmtpVars.length < OPTIONAL_SMTP_VARS.length
+  ) {
+    throw new Error(
+      "SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM must be configured together",
+    );
   }
 
   if (!process.env.GEMINI_API_KEY?.trim()) {

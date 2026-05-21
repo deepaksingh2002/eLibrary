@@ -27,7 +27,7 @@ export async function computeColdStartForUser(userId: string): Promise<void> {
         genre: { $in: genres },
         status: "published",
         isDeleted: false,
-        avgRating: { $gte: 3.5 }
+        avgRating: { $gte: 3.5 },
       })
         .sort({ avgRating: -1, downloads: -1 })
         .limit(20)
@@ -38,7 +38,7 @@ export async function computeColdStartForUser(userId: string): Promise<void> {
     if (books.length < 5) {
       books = await Book.find({
         status: "published",
-        isDeleted: false
+        isDeleted: false,
       })
         .sort({ avgRating: -1, downloads: -1 })
         .limit(20)
@@ -53,14 +53,14 @@ export async function computeColdStartForUser(userId: string): Promise<void> {
           books: books.map((b) => ({
             bookId: b._id,
             score: 1.0,
-            reason: "cold-start"
+            reason: "cold-start",
           })),
           computedAt: new Date(),
-          isColdStart: true
+          isColdStart: true,
         },
-        $inc: { version: 1 }
+        $inc: { version: 1 },
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true },
     );
   } catch (err) {
     console.error("[Recommendations] computeColdStartForUser failed:", err);
@@ -68,14 +68,14 @@ export async function computeColdStartForUser(userId: string): Promise<void> {
 }
 
 export async function computeRecommendations(): Promise<void> {
-  const startTime = Date.now()
-  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
-  
+  const startTime = Date.now();
+  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+
   // Use lean() for read-only data to improve performance
   const activities = await UserActivity.find({ createdAt: { $gte: since } })
     .select("userId bookId eventType rating")
     .lean()
-    .exec()
+    .exec();
 
   const eventWeights: Record<string, number> = {
     view: 1,
@@ -100,7 +100,7 @@ export async function computeRecommendations(): Promise<void> {
       userProfiles.set(uid, {
         bookIds: new Set(),
         weightedBooks: new Map(),
-        totalEvents: 0
+        totalEvents: 0,
       });
     }
     const profile = userProfiles.get(uid)!;
@@ -133,41 +133,47 @@ export async function computeRecommendations(): Promise<void> {
   coldStartUsers.push(...zeroActivityUsers);
 
   const topActiveUsers = [...activeUsers]
-    .sort((a, b) => userProfiles.get(b)!.totalEvents - userProfiles.get(a)!.totalEvents)
+    .sort(
+      (a, b) =>
+        userProfiles.get(b)!.totalEvents - userProfiles.get(a)!.totalEvents,
+    )
     .slice(0, 200);
 
   for (const userId of topActiveUsers) {
     const targetProfile = userProfiles.get(userId)!;
-    
+
     const similarities: { uid: string; score: number }[] = [];
     for (const otherId of topActiveUsers) {
       if (otherId === userId) continue;
       const otherProfile = userProfiles.get(otherId)!;
-      const score = jaccardSimilarity(targetProfile.bookIds, otherProfile.bookIds);
+      const score = jaccardSimilarity(
+        targetProfile.bookIds,
+        otherProfile.bookIds,
+      );
       if (score > 0) {
         similarities.push({ uid: otherId, score });
       }
     }
-    
+
     similarities.sort((a, b) => b.score - a.score);
     const topSimilar = similarities.slice(0, 10);
-    
+
     const candidateScores = new Map<string, number>();
     for (const sim of topSimilar) {
       const similarProfile = userProfiles.get(sim.uid)!;
       for (const [bookId, weight] of similarProfile.weightedBooks) {
         if (targetProfile.bookIds.has(bookId)) continue;
-        
+
         const current = candidateScores.get(bookId) || 0;
         candidateScores.set(bookId, current + weight * sim.score);
       }
     }
-    
+
     const candidates = Array.from(candidateScores.entries())
       .map(([bookId, score]) => ({ bookId, score }))
       .sort((a, b) => b.score - a.score)
       .slice(0, 20);
-      
+
     if (candidates.length > 0) {
       await Recommendation.findOneAndUpdate(
         { userId },
@@ -176,14 +182,14 @@ export async function computeRecommendations(): Promise<void> {
             books: candidates.map((b) => ({
               bookId: new Types.ObjectId(b.bookId),
               score: Math.round(b.score * 100) / 100,
-              reason: "collaborative"
+              reason: "collaborative",
             })),
             computedAt: new Date(),
-            isColdStart: false
+            isColdStart: false,
           },
-          $inc: { version: 1 }
+          $inc: { version: 1 },
         },
-        { upsert: true, new: true }
+        { upsert: true, new: true },
       );
     } else {
       await computeColdStartForUser(userId);
@@ -204,7 +210,7 @@ export async function computeRecommendations(): Promise<void> {
 
 export async function getSimilarBooks(
   bookId: string,
-  limit = 6
+  limit = 6,
 ): Promise<{ bookId: string; score: number }[]> {
   try {
     const target = await Book.findById(bookId)
@@ -216,7 +222,7 @@ export async function getSimilarBooks(
     const allBooks = await Book.find({
       _id: { $ne: bookId },
       status: "published",
-      isDeleted: false
+      isDeleted: false,
     })
       .select("_id genre tags author")
       .lean();
@@ -226,18 +232,15 @@ export async function getSimilarBooks(
 
       if (book.genre === target.genre) score += 0.4;
 
-      if (
-        book.author?.toLowerCase() ===
-        target.author?.toLowerCase()
-      ) {
+      if (book.author?.toLowerCase() === target.author?.toLowerCase()) {
         score += 0.3;
       }
 
       const tagsA = new Set(
-        (target.tags || []).map((t: string) => t.toLowerCase())
+        (target.tags || []).map((t: string) => t.toLowerCase()),
       );
       const tagsB = new Set(
-        (book.tags || []).map((t: string) => t.toLowerCase())
+        (book.tags || []).map((t: string) => t.toLowerCase()),
       );
       if (tagsA.size > 0 || tagsB.size > 0) {
         score += jaccardSimilarity(tagsA, tagsB) * 0.3;
@@ -245,7 +248,7 @@ export async function getSimilarBooks(
 
       return {
         bookId: book._id.toString(),
-        score: Math.round(score * 100) / 100
+        score: Math.round(score * 100) / 100,
       };
     });
 

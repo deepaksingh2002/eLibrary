@@ -29,10 +29,15 @@ async function seedProgress() {
 
   try {
     const books = await Book.find({ isDeleted: false }).limit(3);
-    const users = await User.find({ role: { $ne: "admin" }, isDeleted: false }).limit(2);
+    const users = await User.find({
+      role: { $ne: "admin" },
+      isDeleted: false,
+    }).limit(2);
 
     if (books.length < 3 || users.length < 2) {
-      throw new Error("Need at least 3 books and 2 non-admin users before seeding progress");
+      throw new Error(
+        "Need at least 3 books and 2 non-admin users before seeding progress",
+      );
     }
 
     let seededCount = 0;
@@ -60,7 +65,12 @@ async function seedProgress() {
               },
             },
           },
-          { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+          {
+            upsert: true,
+            new: true,
+            runValidators: true,
+            setDefaultsOnInsert: true,
+          },
         );
 
         await UserActivity.create({

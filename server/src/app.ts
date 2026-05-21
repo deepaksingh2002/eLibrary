@@ -22,26 +22,28 @@ const app = express();
 
 app.set("trust proxy", 1);
 
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc:  ["'self'"],
-      scriptSrc:   ["'self'"],
-      styleSrc:    ["'self'", "'unsafe-inline'"],
-      imgSrc:      ["'self'", "data:", "https://res.cloudinary.com"],
-      connectSrc:  ["'self'"],
-      fontSrc:     ["'self'"],
-      objectSrc:   ["'none'"],
-      frameSrc:    ["'none'"]
-    }
-  },
-  crossOriginEmbedderPolicy: false,
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true
-  }
-}));
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameSrc: ["'none'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+  }),
+);
 
 // Build allowed origins from CORS_ORIGINS (comma-separated). Fall back to FRONTEND_URL if present.
 const rawOrigins = [process.env.CORS_ORIGINS, process.env.FRONTEND_URL]
@@ -54,24 +56,32 @@ const allowedOrigins = rawOrigins
   .filter(Boolean)
   .concat(["http://localhost:3000"]);
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Log origin and allowed origins to help debug CORS failures
-    const originStr = origin || "(no origin)";
-    const normalizedAllowed = allowedOrigins.map((o) => o.replace(/\/+$/, ""));
-    const normalizedOrigin = String(originStr).replace(/\/+$/, "");
-    const isAllowed = normalizedOrigin === "(no origin)" || normalizedAllowed.includes(normalizedOrigin);
-    console.log(`[CORS] origin=${originStr} allowed=${isAllowed} allowedList=${normalizedAllowed.join(",")}`);
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Log origin and allowed origins to help debug CORS failures
+      const originStr = origin || "(no origin)";
+      const normalizedAllowed = allowedOrigins.map((o) =>
+        o.replace(/\/+$/, ""),
+      );
+      const normalizedOrigin = String(originStr).replace(/\/+$/, "");
+      const isAllowed =
+        normalizedOrigin === "(no origin)" ||
+        normalizedAllowed.includes(normalizedOrigin);
+      console.log(
+        `[CORS] origin=${originStr} allowed=${isAllowed} allowedList=${normalizedAllowed.join(",")}`,
+      );
 
-    if (!origin) return callback(null, true);
-    if (isAllowed) return callback(null, true);
-    callback(new Error(`CORS: Origin ${origin} not allowed`));
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-cron-secret"],
-  exposedHeaders: ["Content-Disposition"]
-}));
+      if (!origin) return callback(null, true);
+      if (isAllowed) return callback(null, true);
+      callback(new Error(`CORS: Origin ${origin} not allowed`));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-cron-secret"],
+    exposedHeaders: ["Content-Disposition"],
+  }),
+);
 
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -82,22 +92,25 @@ app.use(hpp());
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 100,
-  message: "Too many requests from this IP, please try again after a minute"
+  message: "Too many requests from this IP, please try again after a minute",
 });
 
 const authRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  message: "Too many login/register attempts, please try again after a minute"
+  message: "Too many login/register attempts, please try again after a minute",
 });
 
 app.use(globalLimiter);
 app.use((req, res, next) => {
-  res.setHeader("X-Request-ID", crypto.randomUUID())
-  res.setHeader("Cache-Control", req.method === "GET" ? "public, max-age=300" : "no-cache")
-  res.setHeader("X-Content-Type-Options", "nosniff")
-  next()
-})
+  res.setHeader("X-Request-ID", crypto.randomUUID());
+  res.setHeader(
+    "Cache-Control",
+    req.method === "GET" ? "public, max-age=300" : "no-cache",
+  );
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  next();
+});
 
 app.use("/api/auth", authRateLimiter, authRouter);
 app.use("/api/books", bookRouter);
@@ -114,7 +127,7 @@ app.get("/health", (req, res) => {
     status: "ok",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    version: process.env.npm_package_version || "1.0.0"
+    version: process.env.npm_package_version || "1.0.0",
   });
 });
 
@@ -124,13 +137,13 @@ app.get("/ready", (req, res) => {
     return res.status(503).json({
       status: "not ready",
       database: "disconnected",
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   }
   res.status(200).json({
     status: "ready",
     database: "connected",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 

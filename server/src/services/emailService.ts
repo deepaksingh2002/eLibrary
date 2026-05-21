@@ -1,22 +1,24 @@
-import nodemailer from "nodemailer"
+import nodemailer from "nodemailer";
 
 const isSmtpConfigured = (): boolean =>
   Boolean(
     process.env.SMTP_HOST?.trim() &&
     process.env.SMTP_USER?.trim() &&
     process.env.SMTP_PASS?.trim() &&
-    process.env.SMTP_FROM?.trim()
-  )
+    process.env.SMTP_FROM?.trim(),
+  );
 
 async function sendEmail(params: {
-  to: string
-  subject: string
-  html: string
-  text: string
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
 }): Promise<void> {
   if (!isSmtpConfigured()) {
-    console.warn(`[Email] SMTP is not configured. Skipping email to ${params.to}.`)
-    return
+    console.warn(
+      `[Email] SMTP is not configured. Skipping email to ${params.to}.`,
+    );
+    return;
   }
 
   const transporter = nodemailer.createTransport({
@@ -25,26 +27,26 @@ async function sendEmail(params: {
     secure: process.env.SMTP_PORT === "465",
     auth: {
       user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
-  })
+      pass: process.env.SMTP_PASS,
+    },
+  });
 
   await transporter.sendMail({
     from: process.env.SMTP_FROM,
     to: params.to,
     subject: params.subject,
     html: params.html,
-    text: params.text
-  })
+    text: params.text,
+  });
 }
 
 export async function sendWelcomeEmail(params: {
-  to: string
-  name: string
+  to: string;
+  name: string;
 }): Promise<void> {
   try {
-    const year = new Date().getFullYear()
-    
+    const year = new Date().getFullYear();
+
     const html = `
       <div style="max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif;">
         <div style="background-color: #1E3A5F; color: white; padding: 20px; text-align: center;">
@@ -68,32 +70,34 @@ export async function sendWelcomeEmail(params: {
           &copy; ${year} eLibrary. All rights reserved.
         </div>
       </div>
-    `
-    
-    const text = `Welcome to eLibrary, ${params.name}!\nYour account has been created successfully.\nVisit: ${process.env.FRONTEND_URL}\nHappy reading!`
-    
+    `;
+
+    const text = `Welcome to eLibrary, ${params.name}!\nYour account has been created successfully.\nVisit: ${process.env.FRONTEND_URL}\nHappy reading!`;
+
     await sendEmail({
       to: params.to,
       subject: `Welcome to eLibrary, ${params.name}!`,
       html,
-      text
-    })
+      text,
+    });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error"
-    console.error("[Email] Welcome email failed:", message)
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[Email] Welcome email failed:", message);
   }
 }
 
 export async function sendPasswordResetEmail(params: {
-  to: string
-  name: string
-  resetToken: string
-  expiresInMinutes: number
+  to: string;
+  name: string;
+  resetToken: string;
+  expiresInMinutes: number;
 }): Promise<void> {
   try {
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${params.resetToken}`
-    const expiryTime = new Date(Date.now() + params.expiresInMinutes * 60 * 1000).toLocaleString()
-    
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${params.resetToken}`;
+    const expiryTime = new Date(
+      Date.now() + params.expiresInMinutes * 60 * 1000,
+    ).toLocaleString();
+
     const html = `
       <div style="max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif;">
         <div style="background-color: white; padding: 32px; color: #333;">
@@ -109,38 +113,38 @@ export async function sendPasswordResetEmail(params: {
           <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">Link expires at ${expiryTime}</p>
         </div>
       </div>
-    `
-    
-    const text = `Hi ${params.name},\nWe received a request to reset your password. Please visit: ${resetUrl}\nThis link expires in ${params.expiresInMinutes} minutes.\nIf you did not request this, ignore this email.`
-    
+    `;
+
+    const text = `Hi ${params.name},\nWe received a request to reset your password. Please visit: ${resetUrl}\nThis link expires in ${params.expiresInMinutes} minutes.\nIf you did not request this, ignore this email.`;
+
     await sendEmail({
       to: params.to,
       subject: "Reset your eLibrary password",
       html,
-      text
-    })
+      text,
+    });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error"
-    console.error("[Email] Password reset email failed:", message)
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[Email] Password reset email failed:", message);
   }
 }
 
 export async function sendPasswordChangedEmail(params: {
-  to: string
-  name: string
+  to: string;
+  name: string;
 }): Promise<void> {
   try {
-    const html = `<p>Hi ${params.name},</p><p>Your eLibrary password was successfully changed.</p><p>If this was not you, please contact support immediately.</p>`
-    const text = `Hi ${params.name},\nYour eLibrary password was successfully changed.\nIf this was not you, please contact support immediately.`
-    
+    const html = `<p>Hi ${params.name},</p><p>Your eLibrary password was successfully changed.</p><p>If this was not you, please contact support immediately.</p>`;
+    const text = `Hi ${params.name},\nYour eLibrary password was successfully changed.\nIf this was not you, please contact support immediately.`;
+
     await sendEmail({
       to: params.to,
       subject: "Your eLibrary password was changed",
       html,
-      text
-    })
+      text,
+    });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error"
-    console.error("[Email] Password changed email failed:", message)
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[Email] Password changed email failed:", message);
   }
 }

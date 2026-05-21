@@ -1,7 +1,11 @@
 import { SortOrder } from "mongoose";
 import Book, { IBook } from "../models/Book";
 import { UserActivity } from "../models/UserActivity";
-import { deleteFromCloudinary, generateSignedUrl, uploadBufferToCloudinary } from "../config/cloudinary";
+import {
+  deleteFromCloudinary,
+  generateSignedUrl,
+  uploadBufferToCloudinary,
+} from "../config/cloudinary";
 import { ApiError } from "../utils/ApiError";
 import { summarizePdfBook } from "./claudeService";
 import { resolveExternalPdfUrl } from "./externalPdfResolver";
@@ -43,7 +47,7 @@ const AI_BOOK_FIELDS = [
   "extractionError",
   "geminiFileUri",
   "geminiMimeType",
-  "extractedAt"
+  "extractedAt",
 ] as const;
 
 const VALID_STATUSES: BookStatus[] = ["draft", "published"];
@@ -67,9 +71,16 @@ function parseStatus(status: unknown): BookStatus {
   return value as BookStatus;
 }
 
-function getPagination(query: BookListQuery): { page: number; limit: number; skip: number } {
+function getPagination(query: BookListQuery): {
+  page: number;
+  limit: number;
+  skip: number;
+} {
   const page = Math.max(1, Number.parseInt(query.page ?? "1", 10) || 1);
-  const limit = Math.min(50, Math.max(1, Number.parseInt(query.limit ?? "12", 10) || 12));
+  const limit = Math.min(
+    50,
+    Math.max(1, Number.parseInt(query.limit ?? "12", 10) || 12),
+  );
   const skip = (page - 1) * limit;
 
   return { page, limit, skip };
@@ -79,9 +90,7 @@ function parseTags(tags: unknown): string[] {
   if (!tags) return [];
 
   if (Array.isArray(tags)) {
-    return tags
-      .map((tag) => String(tag).trim().toLowerCase())
-      .filter(Boolean);
+    return tags.map((tag) => String(tag).trim().toLowerCase()).filter(Boolean);
   }
 
   if (typeof tags === "string") {
@@ -103,34 +112,41 @@ function parseTags(tags: unknown): string[] {
   return [];
 }
 
-async function uploadPdf(file: Express.Multer.File): Promise<{ pdfUrl: string; pdfPublicId: string }> {
+async function uploadPdf(
+  file: Express.Multer.File,
+): Promise<{ pdfUrl: string; pdfPublicId: string }> {
   const result = await uploadBufferToCloudinary(file.buffer, {
     folder: "elibrary/pdfs",
-    resource_type: "raw"
+    resource_type: "raw",
   });
 
   return {
     pdfUrl: result.secure_url,
-    pdfPublicId: result.public_id
+    pdfPublicId: result.public_id,
   };
 }
 
-async function uploadCover(file: Express.Multer.File): Promise<{ coverUrl: string; coverPublicId: string }> {
+async function uploadCover(
+  file: Express.Multer.File,
+): Promise<{ coverUrl: string; coverPublicId: string }> {
   const result = await uploadBufferToCloudinary(file.buffer, {
     folder: "elibrary/covers",
-    resource_type: "image"
+    resource_type: "image",
   });
 
   return {
     coverUrl: result.secure_url,
-    coverPublicId: result.public_id
+    coverPublicId: result.public_id,
   };
 }
 
-function ensureBookFiles(files: FilesMap | undefined): { cover?: Express.Multer.File; pdf?: Express.Multer.File } {
+function ensureBookFiles(files: FilesMap | undefined): {
+  cover?: Express.Multer.File;
+  pdf?: Express.Multer.File;
+} {
   return {
     cover: files?.cover?.[0],
-    pdf: files?.pdf?.[0]
+    pdf: files?.pdf?.[0],
   };
 }
 
@@ -169,7 +185,7 @@ export async function listBooks(query: BookListQuery, user?: AuthUser) {
       .limit(limit)
       .populate("uploadedBy", "name email")
       .lean(),
-    Book.countDocuments(filter)
+    Book.countDocuments(filter),
   ]);
 
   return {
@@ -178,7 +194,7 @@ export async function listBooks(query: BookListQuery, user?: AuthUser) {
     page,
     totalPages: Math.ceil(total / limit),
     hasNextPage: page * limit < total,
-    hasPrevPage: page > 1
+    hasPrevPage: page > 1,
   };
 }
 
@@ -189,7 +205,7 @@ export async function searchBooks(query: BookSearchQuery) {
 
   const filter: Record<string, unknown> = {
     status: "published",
-    isDeleted: false
+    isDeleted: false,
   };
 
   if (query.genre) {
@@ -200,12 +216,15 @@ export async function searchBooks(query: BookSearchQuery) {
     filter.language = { $regex: escapeRegex(query.language), $options: "i" };
   }
 
-  const sortMap: Record<string, Record<string, SortOrder> | { score: { $meta: "textScore" } }> = {
+  const sortMap: Record<
+    string,
+    Record<string, SortOrder> | { score: { $meta: "textScore" } }
+  > = {
     downloads: { downloads: -1 },
     rating: { avgRating: -1 },
     newest: { createdAt: -1 },
     oldest: { createdAt: 1 },
-    relevance: { score: { $meta: "textScore" } }
+    relevance: { score: { $meta: "textScore" } },
   };
 
   let books: unknown[] = [];
@@ -213,7 +232,10 @@ export async function searchBooks(query: BookSearchQuery) {
 
   if (q) {
     const textFilter = { ...filter, $text: { $search: q } };
-    const sortOption = sort === "relevance" ? sortMap.relevance : (sortMap[sort] ?? { createdAt: -1 });
+    const sortOption =
+      sort === "relevance"
+        ? sortMap.relevance
+        : (sortMap[sort] ?? { createdAt: -1 });
 
     [books, total] = await Promise.all([
       Book.find(textFilter, { score: { $meta: "textScore" } })
@@ -222,10 +244,13 @@ export async function searchBooks(query: BookSearchQuery) {
         .limit(limit)
         .populate("uploadedBy", "name")
         .lean(),
-      Book.countDocuments(textFilter)
+      Book.countDocuments(textFilter),
     ]);
   } else {
-    const sortOption = (sortMap[sort] ?? { createdAt: -1 }) as Record<string, SortOrder>;
+    const sortOption = (sortMap[sort] ?? { createdAt: -1 }) as Record<
+      string,
+      SortOrder
+    >;
 
     [books, total] = await Promise.all([
       Book.find(filter)
@@ -234,7 +259,7 @@ export async function searchBooks(query: BookSearchQuery) {
         .limit(limit)
         .populate("uploadedBy", "name")
         .lean(),
-      Book.countDocuments(filter)
+      Book.countDocuments(filter),
     ]);
   }
 
@@ -245,7 +270,7 @@ export async function searchBooks(query: BookSearchQuery) {
     totalPages: Math.ceil(total / limit),
     query: q,
     hasNextPage: page * limit < total,
-    hasPrevPage: page > 1
+    hasPrevPage: page > 1,
   };
 }
 
@@ -258,7 +283,7 @@ export async function autocompleteBooks(query: { q?: string }) {
   const suggestions = await Book.find({
     title: { $regex: escapeRegex(q), $options: "i" },
     status: "published",
-    isDeleted: false
+    isDeleted: false,
   })
     .limit(8)
     .select("_id title author coverUrl genre")
@@ -276,13 +301,11 @@ export async function getBookById(id: string, user?: AuthUser) {
   let query: any = Book.findOne(filter);
   if (user?.role === "admin") {
     query = query.select(
-      "title author description genre language tags coverUrl coverPublicId pdfUrl pdfPublicId status downloads avgRating totalReviews isbn publishedYear publisher pageCount importSource externalId uploadedBy isDeleted createdAt updatedAt extractionStatus extractionPages extractionError extractedAt geminiFileUri geminiMimeType"
+      "title author description genre language tags coverUrl coverPublicId pdfUrl pdfPublicId status downloads avgRating totalReviews isbn publishedYear publisher pageCount importSource externalId uploadedBy isDeleted createdAt updatedAt extractionStatus extractionPages extractionError extractedAt geminiFileUri geminiMimeType",
     );
   }
 
-  const book = await query
-    .populate("uploadedBy", "name email")
-    .lean();
+  const book = await query.populate("uploadedBy", "name email").lean();
 
   if (!book) {
     throw new ApiError(404, "Book not found");
@@ -293,7 +316,7 @@ export async function getBookById(id: string, user?: AuthUser) {
       UserActivity.create({
         userId: user.id,
         bookId: id,
-        eventType: "view"
+        eventType: "view",
       }).catch(() => undefined);
     });
   }
@@ -301,7 +324,11 @@ export async function getBookById(id: string, user?: AuthUser) {
   return { book };
 }
 
-export async function createBook(payload: BookPayload, files: FilesMap | undefined, user: AuthUser) {
+export async function createBook(
+  payload: BookPayload,
+  files: FilesMap | undefined,
+  user: AuthUser,
+) {
   const title = parseText(payload.title);
   const author = parseText(payload.author);
   const description = parseText(payload.description);
@@ -316,12 +343,21 @@ export async function createBook(payload: BookPayload, files: FilesMap | undefin
   if (!genre) throw new ApiError(400, "Genre is required");
   if (!pdf) throw new ApiError(400, "PDF file is required");
 
-  const uploadedResources: Array<{ publicId: string; resourceType: "image" | "raw" }> = [];
+  const uploadedResources: Array<{
+    publicId: string;
+    resourceType: "image" | "raw";
+  }> = [];
 
   try {
     const pdfResult = await uploadPdf(pdf);
-      console.log("[BookService] PDF upload result:", { secure_url: pdfResult.pdfUrl, public_id: pdfResult.pdfPublicId });
-    uploadedResources.push({ publicId: pdfResult.pdfPublicId, resourceType: "raw" });
+    console.log("[BookService] PDF upload result:", {
+      secure_url: pdfResult.pdfUrl,
+      public_id: pdfResult.pdfPublicId,
+    });
+    uploadedResources.push({
+      publicId: pdfResult.pdfPublicId,
+      resourceType: "raw",
+    });
 
     // ── Upload to Gemini File API in background ────────────
     // This runs after the book is created so it does not
@@ -336,7 +372,10 @@ export async function createBook(payload: BookPayload, files: FilesMap | undefin
       const coverResult = await uploadCover(cover);
       coverUrl = coverResult.coverUrl;
       coverPublicId = coverResult.coverPublicId;
-      uploadedResources.push({ publicId: coverPublicId, resourceType: "image" });
+      uploadedResources.push({
+        publicId: coverPublicId,
+        resourceType: "image",
+      });
     }
 
     const book = await Book.create({
@@ -355,85 +394,100 @@ export async function createBook(payload: BookPayload, files: FilesMap | undefin
       extractionError: "",
       extractedAt: new Date(),
       status,
-      uploadedBy: user.id
+      uploadedBy: user.id,
     });
-    console.log("[BookService] Book created with PDF:", { id: book._id.toString(), pdfUrl: book.pdfUrl, pdfPublicId: book.pdfPublicId });
+    console.log("[BookService] Book created with PDF:", {
+      id: book._id.toString(),
+      pdfUrl: book.pdfUrl,
+      pdfPublicId: book.pdfPublicId,
+    });
 
     // Background: upload to Gemini File API
-    const bookIdStr  = book._id.toString()
-    const bookTitle  = book.title
-    const pdfBuffer  = (files as any)?.pdf?.[0]?.buffer
+    const bookIdStr = book._id.toString();
+    const bookTitle = book.title;
+    const pdfBuffer = (files as any)?.pdf?.[0]?.buffer;
 
     if (pdfBuffer) {
       setImmediate(async () => {
         try {
-          console.log(
-            "[Book] Starting Gemini PDF upload for:", bookTitle
-          )
+          console.log("[Book] Starting Gemini PDF upload for:", bookTitle);
 
           // Update status to uploading
           await Book.findByIdAndUpdate(bookIdStr, {
-            extractionStatus: "uploading"
-          })
+            extractionStatus: "uploading",
+          });
 
           const { uploadPDFToGemini } =
-            await import("../services/geminiPDFService")
+            await import("../services/geminiPDFService");
 
-          const result = await uploadPDFToGemini(
-            pdfBuffer,
-            `${bookTitle}.pdf`
-          )
+          const result = await uploadPDFToGemini(pdfBuffer, `${bookTitle}.pdf`);
 
           if (result.success) {
             await Book.findByIdAndUpdate(bookIdStr, {
-              geminiFileUri:    result.fileUri,
-              geminiMimeType:   result.mimeType,
+              geminiFileUri: result.fileUri,
+              geminiMimeType: result.mimeType,
               extractionStatus: "ready",
-              extractedAt:      new Date()
-            })
-            console.log(
-              "[Book] Gemini PDF ready for:", bookTitle
-            )
+              extractedAt: new Date(),
+            });
+            console.log("[Book] Gemini PDF ready for:", bookTitle);
           } else {
             await Book.findByIdAndUpdate(bookIdStr, {
               extractionStatus: "failed",
-              extractionError:  result.error || "Upload failed"
-            })
+              extractionError: result.error || "Upload failed",
+            });
             console.error(
-              "[Book] Gemini upload failed for:", bookTitle,
-              result.error
-            )
+              "[Book] Gemini upload failed for:",
+              bookTitle,
+              result.error,
+            );
           }
         } catch (err: any) {
           await Book.findByIdAndUpdate(bookIdStr, {
             extractionStatus: "failed",
-            extractionError:  err.message
-          })
-          console.error("[Book] Background upload error:", err.message)
+            extractionError: err.message,
+          });
+          console.error("[Book] Background upload error:", err.message);
         }
-      })
+      });
     }
 
-    return { message: "Book created successfully", book: sanitizeBookResponse(book.toObject() as unknown as Record<string, unknown>) };
+    return {
+      message: "Book created successfully",
+      book: sanitizeBookResponse(
+        book.toObject() as unknown as Record<string, unknown>,
+      ),
+    };
   } catch (error) {
     await Promise.all(
       uploadedResources.map((resource) =>
-        deleteFromCloudinary(resource.publicId, resource.resourceType)
-      )
+        deleteFromCloudinary(resource.publicId, resource.resourceType),
+      ),
     );
 
     if (error instanceof Error) {
       console.error("[BookService] createBook failed:", error.message);
-      
+
       // Provide specific error messages for common issues
-      if (error.message.includes("timed out") || error.message.includes("timeout")) {
-        throw new ApiError(408, "PDF upload timed out. Please try a smaller file or check your connection.");
+      if (
+        error.message.includes("timed out") ||
+        error.message.includes("timeout")
+      ) {
+        throw new ApiError(
+          408,
+          "PDF upload timed out. Please try a smaller file or check your connection.",
+        );
       }
       if (error.message.includes("too large")) {
-        throw new ApiError(413, "File is too large. Please ensure your PDF is under 50MB.");
+        throw new ApiError(
+          413,
+          "File is too large. Please ensure your PDF is under 50MB.",
+        );
       }
       if (error.message.includes("Cloudinary")) {
-        throw new ApiError(502, "Failed to upload PDF to storage service. Please try again.");
+        throw new ApiError(
+          502,
+          "Failed to upload PDF to storage service. Please try again.",
+        );
       }
     }
 
@@ -445,7 +499,11 @@ export async function createBook(payload: BookPayload, files: FilesMap | undefin
   }
 }
 
-export async function updateBook(id: string, payload: BookPayload, files: FilesMap | undefined) {
+export async function updateBook(
+  id: string,
+  payload: BookPayload,
+  files: FilesMap | undefined,
+) {
   const book = await Book.findOne({ _id: id, isDeleted: false });
   if (!book) {
     throw new ApiError(404, "Book not found");
@@ -456,13 +514,17 @@ export async function updateBook(id: string, payload: BookPayload, files: FilesM
   const genre = parseText(payload.genre);
   const language = parseText(payload.language);
 
-  if (payload.title !== undefined && !title) throw new ApiError(400, "Title is required");
-  if (payload.author !== undefined && !author) throw new ApiError(400, "Author is required");
-  if (payload.genre !== undefined && !genre) throw new ApiError(400, "Genre is required");
+  if (payload.title !== undefined && !title)
+    throw new ApiError(400, "Title is required");
+  if (payload.author !== undefined && !author)
+    throw new ApiError(400, "Author is required");
+  if (payload.genre !== undefined && !genre)
+    throw new ApiError(400, "Genre is required");
 
   if (payload.title !== undefined) book.title = title;
   if (payload.author !== undefined) book.author = author;
-  if (payload.description !== undefined) book.description = parseText(payload.description);
+  if (payload.description !== undefined)
+    book.description = parseText(payload.description);
   if (payload.genre !== undefined) book.genre = genre;
   if (payload.language !== undefined) book.language = language || "en";
   if (payload.status !== undefined) book.status = parseStatus(payload.status);
@@ -494,52 +556,62 @@ export async function updateBook(id: string, payload: BookPayload, files: FilesM
     await book.save();
 
     await Promise.all([
-      previousCoverPublicId ? deleteFromCloudinary(previousCoverPublicId, "image") : Promise.resolve(),
-      previousPdfPublicId ? deleteFromCloudinary(previousPdfPublicId, "raw") : Promise.resolve()
+      previousCoverPublicId
+        ? deleteFromCloudinary(previousCoverPublicId, "image")
+        : Promise.resolve(),
+      previousPdfPublicId
+        ? deleteFromCloudinary(previousPdfPublicId, "raw")
+        : Promise.resolve(),
     ]);
 
     // Re-upload new PDF to Gemini in background
-    const newPdfBuffer = (files as any)?.pdf?.[0]?.buffer
-    const bookIdStr2   = id
+    const newPdfBuffer = (files as any)?.pdf?.[0]?.buffer;
+    const bookIdStr2 = id;
 
     if (newPdfBuffer) {
       setImmediate(async () => {
         try {
           await Book.findByIdAndUpdate(bookIdStr2, {
-            geminiFileUri:    "",
-            extractionStatus: "uploading"
-          })
+            geminiFileUri: "",
+            extractionStatus: "uploading",
+          });
 
           const { uploadPDFToGemini: reUpload } =
-            await import("../services/geminiPDFService")
+            await import("../services/geminiPDFService");
 
-          const result = await reUpload(
-            newPdfBuffer,
-            `${book.title}.pdf`
-          )
+          const result = await reUpload(newPdfBuffer, `${book.title}.pdf`);
 
           if (result.success) {
             await Book.findByIdAndUpdate(bookIdStr2, {
-              geminiFileUri:    result.fileUri,
-              geminiMimeType:   result.mimeType,
+              geminiFileUri: result.fileUri,
+              geminiMimeType: result.mimeType,
               extractionStatus: "ready",
-              extractedAt:      new Date()
-            })
+              extractedAt: new Date(),
+            });
           } else {
             await Book.findByIdAndUpdate(bookIdStr2, {
               extractionStatus: "failed",
-              extractionError:  result.error || ""
-            })
+              extractionError: result.error || "",
+            });
           }
         } catch (err: any) {
-          console.error("[Book] Re-upload error:", err.message)
+          console.error("[Book] Re-upload error:", err.message);
         }
-      })
+      });
     }
 
-    return { message: "Book updated successfully", book: sanitizeBookResponse(book.toObject() as unknown as Record<string, unknown>) };
+    return {
+      message: "Book updated successfully",
+      book: sanitizeBookResponse(
+        book.toObject() as unknown as Record<string, unknown>,
+      ),
+    };
   } catch (error) {
-    if (cover && book.coverPublicId && book.coverPublicId !== previousCoverPublicId) {
+    if (
+      cover &&
+      book.coverPublicId &&
+      book.coverPublicId !== previousCoverPublicId
+    ) {
       await deleteFromCloudinary(book.coverPublicId, "image");
       if (previousCoverPublicId) {
         book.coverPublicId = previousCoverPublicId;
@@ -581,7 +653,7 @@ export async function hardDeleteBook(id: string) {
 
   await Promise.all([
     deleteFromCloudinary(book.coverPublicId, "image"),
-    deleteFromCloudinary(book.pdfPublicId, "raw")
+    deleteFromCloudinary(book.pdfPublicId, "raw"),
   ]);
 
   await Book.findByIdAndDelete(id);
@@ -600,7 +672,7 @@ export async function toggleBookStatus(id: string) {
 
   return {
     message: `Book ${book.status === "published" ? "published" : "moved to draft"} successfully`,
-    book
+    book,
   };
 }
 
@@ -615,7 +687,7 @@ export async function resolveBookPdf(id: string) {
       message: "This book already has an uploaded PDF",
       resolved: false,
       hasPdf: true,
-      book
+      book,
     };
   }
 
@@ -625,7 +697,7 @@ export async function resolveBookPdf(id: string) {
     isbn: book.isbn,
     importSource: book.importSource,
     externalId: book.externalId,
-    pdfUrl: ""
+    pdfUrl: "",
   });
 
   if (!resolvedPdfUrl) {
@@ -637,7 +709,7 @@ export async function resolveBookPdf(id: string) {
       message: "PDF is already linked for this book",
       resolved: true,
       hasPdf: true,
-      book
+      book,
     };
   }
 
@@ -648,7 +720,7 @@ export async function resolveBookPdf(id: string) {
     message: "PDF resolved and saved successfully",
     resolved: true,
     hasPdf: true,
-    book
+    book,
   };
 }
 
@@ -657,7 +729,7 @@ export async function downloadBook(id: string, user: AuthUser) {
 
   const accessFilter: Record<string, unknown> = {
     _id: id,
-    isDeleted: false
+    isDeleted: false,
   };
 
   if (user.role !== "admin") {
@@ -675,42 +747,52 @@ export async function downloadBook(id: string, user: AuthUser) {
 
   try {
     if (book.pdfPublicId) {
-      console.log(`[Download] Attempting to generate signed URL for publicId: ${book.pdfPublicId}`);
+      console.log(
+        `[Download] Attempting to generate signed URL for publicId: ${book.pdfPublicId}`,
+      );
       downloadUrl = generateSignedUrl(book.pdfPublicId);
-      
+
       if (!downloadUrl) {
-        console.warn(`[Download] Signed URL generation failed or returned empty, falling back to direct pdfUrl`);
+        console.warn(
+          `[Download] Signed URL generation failed or returned empty, falling back to direct pdfUrl`,
+        );
         downloadUrl = book.pdfUrl;
       }
     } else {
-      console.warn(`[Download] pdfPublicId missing for book ${id}, trying stored or external source PDF URL`);
-      downloadUrl = book.pdfUrl || await resolveExternalPdfUrl({
-        title: book.title,
-        author: book.author,
-        isbn: book.isbn,
-        importSource: book.importSource,
-        externalId: book.externalId,
-        pdfUrl: book.pdfUrl
-      });
+      console.warn(
+        `[Download] pdfPublicId missing for book ${id}, trying stored or external source PDF URL`,
+      );
+      downloadUrl =
+        book.pdfUrl ||
+        (await resolveExternalPdfUrl({
+          title: book.title,
+          author: book.author,
+          isbn: book.isbn,
+          importSource: book.importSource,
+          externalId: book.externalId,
+          pdfUrl: book.pdfUrl,
+        }));
     }
-    
+
     // Ensure PDF download format by adding proper parameters
     if (downloadUrl && !downloadUrl.includes("dl=1")) {
       // Add dl=1 to Cloudinary URLs to force download
       if (downloadUrl.includes("cloudinary.com")) {
-        downloadUrl = downloadUrl.includes("?") 
+        downloadUrl = downloadUrl.includes("?")
           ? downloadUrl + "&fl=attachment&dl=1"
           : downloadUrl + "?fl=attachment&dl=1";
       }
     }
-    
+
     // Final validation
     if (!downloadUrl) {
       console.error(`[Download] Failed to get any download URL for book ${id}`);
       throw new ApiError(404, "PDF not available for this book");
     }
-    
-    console.log(`[Download] Successfully generated download URL for book ${id}, URL length: ${downloadUrl.length}`);
+
+    console.log(
+      `[Download] Successfully generated download URL for book ${id}, URL length: ${downloadUrl.length}`,
+    );
 
     // Record download activity and increment download counter (non-blocking)
     setImmediate(() => {
@@ -719,15 +801,17 @@ export async function downloadBook(id: string, user: AuthUser) {
         UserActivity.create({
           userId: user.id,
           bookId: id,
-          eventType: "download"
-        })
-      ]).catch(err => console.error("[Download] Failed to update download stats:", err));
+          eventType: "download",
+        }),
+      ]).catch((err) =>
+        console.error("[Download] Failed to update download stats:", err),
+      );
     });
 
     return {
       downloadUrl,
       fileName: `${book.title.replace(/\s+/g, "-")}.pdf`,
-      expiresIn: 600
+      expiresIn: 600,
     };
   } catch (error) {
     if (error instanceof ApiError) {
@@ -743,14 +827,16 @@ export async function summarizeBook(id: string) {
   const book = await Book.findOne({
     _id: id,
     isDeleted: false,
-    status: "published"
+    status: "published",
   }).lean();
 
   if (!book) {
     throw new ApiError(404, "Book not found");
   }
 
-  const pdfUrl = book.pdfPublicId ? generateSignedUrl(book.pdfPublicId) : book.pdfUrl;
+  const pdfUrl = book.pdfPublicId
+    ? generateSignedUrl(book.pdfPublicId)
+    : book.pdfUrl;
 
   const summary = await summarizePdfBook({
     title: book.title,
@@ -758,13 +844,13 @@ export async function summarizeBook(id: string) {
     genre: book.genre,
     description: book.description,
     tags: book.tags,
-    pdfUrl
+    pdfUrl,
   });
 
   return {
     bookId: book._id,
     title: book.title,
     provider: "gemini",
-    ...summary
+    ...summary,
   };
 }

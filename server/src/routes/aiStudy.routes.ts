@@ -1,77 +1,77 @@
-import { Router }        from "express"
-import { Types }         from "mongoose"
-import { protect }       from "../middleware/auth.middleware"
-import { asyncHandler }  from "../utils/asyncHandler"
-import { ApiError }      from "../utils/ApiError"
-import Book              from "../models/Book"
-import AIStudyCache      from "../models/AIStudyCache"
+import { Router } from "express";
+import { Types } from "mongoose";
+import { protect } from "../middleware/auth.middleware";
+import { asyncHandler } from "../utils/asyncHandler";
+import { ApiError } from "../utils/ApiError";
+import Book from "../models/Book";
+import AIStudyCache from "../models/AIStudyCache";
 import {
   generateBookSummary,
   generateMCQQuestions,
-  generateKeyPoints
-} from "../services/aiStudyService"
-import { isFileURIValid } from "../services/geminiPDFService"
+  generateKeyPoints,
+} from "../services/aiStudyService";
+import { isFileURIValid } from "../services/geminiPDFService";
 
-const router = Router()
-router.use(protect)
+const router = Router();
+router.use(protect);
 
 // ─── Helper: get book data needed for AI ─────────────────
 async function getBook(bookId: string) {
   const book = await Book.findOne({
-    _id:       bookId,
-    isDeleted: false
+    _id: bookId,
+    isDeleted: false,
   })
-  .select(
-    "title author genre description tags " +
-    "pdfUrl geminiFileUri geminiMimeType " +
-    "extractionStatus extractionError"
-  )
-  .lean()
+    .select(
+      "title author genre description tags " +
+        "pdfUrl geminiFileUri geminiMimeType " +
+        "extractionStatus extractionError",
+    )
+    .lean();
 
-  if (!book) throw new ApiError(404, "Book not found")
-  return book
+  if (!book) throw new ApiError(404, "Book not found");
+  return book;
 }
 
 // ─── Helper: get cached result ────────────────────────────
 async function getCached(
   bookId: string,
-  type:   "summary" | "mcq" | "keypoints"
+  type: "summary" | "mcq" | "keypoints",
 ) {
   return AIStudyCache.findOne({
     bookId: new Types.ObjectId(bookId),
     type,
-    expiresAt: { $gt: new Date() }
-  }).lean()
+    expiresAt: { $gt: new Date() },
+  }).lean();
 }
 
 // ─── Helper: save to cache ────────────────────────────────
 async function saveCache(
   bookId: string,
-  type:   "summary" | "mcq" | "keypoints",
-  data:   any
+  type: "summary" | "mcq" | "keypoints",
+  data: any,
 ) {
   try {
     await AIStudyCache.findOneAndUpdate(
       {
         bookId: new Types.ObjectId(bookId),
-        type
+        type,
       },
       {
         $set: {
           data,
           createdAt: new Date(),
-          expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000)
-        }
+          expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        },
       },
-      { upsert: true }
-    )
+      { upsert: true },
+    );
   } catch (err: any) {
     // Ignore duplicate key race-condition (two concurrent upserts)
     if (err && typeof err.code === "number" && err.code === 11000) {
-      console.warn(`[AIStudy] saveCache duplicate key for ${bookId} ${type}`)
-      return
+      console.warn(`[AIStudy] saveCache duplicate key for ${bookId} ${type}`);
+      return;
     }
-    console.error("[AIStudy] saveCache error:", err)
+    console.error("[AIStudy] saveCache error:", err);
   }
 }
 
@@ -82,30 +82,29 @@ async function saveCache(
 router.get(
   "/:bookId/status",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params
+    const { bookId } = req.params;
     if (!Types.ObjectId.isValid(bookId)) {
-      throw new ApiError(400, "Invalid book ID")
+      throw new ApiError(400, "Invalid book ID");
     }
 
     const book = await Book.findById(bookId)
       .select(
-        "title extractionStatus extractionError " +
-        "geminiFileUri extractedAt"
+        "title extractionStatus extractionError " + "geminiFileUri extractedAt",
       )
-      .lean()
+      .lean();
 
-    if (!book) throw new ApiError(404, "Book not found")
+    if (!book) throw new ApiError(404, "Book not found");
 
     res.json({
-      title:            (book as any).title,
+      title: (book as any).title,
       extractionStatus: (book as any).extractionStatus || "pending",
-      isReady:          (book as any).extractionStatus === "ready",
-      hasFileUri:       !!((book as any).geminiFileUri),
-      error:            (book as any).extractionError || null,
-      extractedAt:      (book as any).extractedAt || null
-    })
-  })
-)
+      isReady: (book as any).extractionStatus === "ready",
+      hasFileUri: !!(book as any).geminiFileUri,
+      error: (book as any).extractionError || null,
+      extractedAt: (book as any).extractedAt || null,
+    });
+  }),
+);
 
 // ─────────────────────────────────────────────────────────
 // GET /api/ai-study/:bookId/summary
@@ -113,48 +112,50 @@ router.get(
 router.get(
   "/:bookId/summary",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params
+    const { bookId } = req.params;
     if (!Types.ObjectId.isValid(bookId)) {
-      throw new ApiError(400, "Invalid book ID")
+      throw new ApiError(400, "Invalid book ID");
     }
 
     // Check cache first
-    const cached = await getCached(bookId, "summary")
+    const cached = await getCached(bookId, "summary");
     if (cached) {
       return res.json({
-        summary:    cached.data,
-        cached:     true,
-        basedOnPDF: cached.data?.basedOnPDF || false
-      })
+        summary: cached.data,
+        cached: true,
+        basedOnPDF: cached.data?.basedOnPDF || false,
+      });
     }
 
-    const book    = await getBook(bookId)
-    console.log("[AIStudy] Generating summary:", (book as any).title)
+    const book = await getBook(bookId);
+    console.log("[AIStudy] Generating summary:", (book as any).title);
 
-    let summary = await generateBookSummary(book as any)
+    let summary = await generateBookSummary(book as any);
 
     // Safety guard: ensure we never send `null` back to the client.
     if (!summary) {
-      console.error(`[AIStudy] generateBookSummary returned falsy for book ${bookId} (${(book as any).title})`)
+      console.error(
+        `[AIStudy] generateBookSummary returned falsy for book ${bookId} (${(book as any).title})`,
+      );
       summary = {
         overview: "Could not generate a summary for this book.",
         keyThemes: ["Summary generation failed"],
         targetReader: "Unavailable",
         difficulty: "Intermediate",
         estimatedTime: "Unknown",
-        basedOnPDF: false
-      }
+        basedOnPDF: false,
+      };
     }
 
-    await saveCache(bookId, "summary", summary)
+    await saveCache(bookId, "summary", summary);
 
     res.json({
       summary,
-      cached:     false,
-      basedOnPDF: summary.basedOnPDF || false
-    })
-  })
-)
+      cached: false,
+      basedOnPDF: summary.basedOnPDF || false,
+    });
+  }),
+);
 
 // ─────────────────────────────────────────────────────────
 // GET /api/ai-study/:bookId/mcq?count=10
@@ -162,38 +163,39 @@ router.get(
 router.get(
   "/:bookId/mcq",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params
+    const { bookId } = req.params;
     const count = Math.min(
-      20, Math.max(5, parseInt(req.query.count as string) || 10)
-    )
+      20,
+      Math.max(5, parseInt(req.query.count as string) || 10),
+    );
     if (!Types.ObjectId.isValid(bookId)) {
-      throw new ApiError(400, "Invalid book ID")
+      throw new ApiError(400, "Invalid book ID");
     }
 
-    const cached = await getCached(bookId, "mcq")
+    const cached = await getCached(bookId, "mcq");
     if (cached) {
       return res.json({
-        questions:  cached.data,
-        total:      cached.data?.length || 0,
-        cached:     true,
-        basedOnPDF: true
-      })
+        questions: cached.data,
+        total: cached.data?.length || 0,
+        cached: true,
+        basedOnPDF: true,
+      });
     }
 
-    const book      = await getBook(bookId)
-    console.log("[AIStudy] Generating MCQ:", (book as any).title)
+    const book = await getBook(bookId);
+    console.log("[AIStudy] Generating MCQ:", (book as any).title);
 
-    const questions = await generateMCQQuestions(book as any, count)
-    await saveCache(bookId, "mcq", questions)
+    const questions = await generateMCQQuestions(book as any, count);
+    await saveCache(bookId, "mcq", questions);
 
     res.json({
       questions,
-      total:      questions.length,
-      cached:     false,
-      basedOnPDF: true
-    })
-  })
-)
+      total: questions.length,
+      cached: false,
+      basedOnPDF: true,
+    });
+  }),
+);
 
 // ─────────────────────────────────────────────────────────
 // GET /api/ai-study/:bookId/key-points
@@ -201,33 +203,33 @@ router.get(
 router.get(
   "/:bookId/key-points",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params
+    const { bookId } = req.params;
     if (!Types.ObjectId.isValid(bookId)) {
-      throw new ApiError(400, "Invalid book ID")
+      throw new ApiError(400, "Invalid book ID");
     }
 
-    const cached = await getCached(bookId, "keypoints")
+    const cached = await getCached(bookId, "keypoints");
     if (cached) {
       return res.json({
-        keyPoints:  cached.data,
-        cached:     true,
-        basedOnPDF: cached.data?.basedOnPDF || false
-      })
+        keyPoints: cached.data,
+        cached: true,
+        basedOnPDF: cached.data?.basedOnPDF || false,
+      });
     }
 
-    const book      = await getBook(bookId)
-    console.log("[AIStudy] Generating key points:", (book as any).title)
+    const book = await getBook(bookId);
+    console.log("[AIStudy] Generating key points:", (book as any).title);
 
-    const keyPoints = await generateKeyPoints(book as any)
-    await saveCache(bookId, "keypoints", keyPoints)
+    const keyPoints = await generateKeyPoints(book as any);
+    await saveCache(bookId, "keypoints", keyPoints);
 
     res.json({
       keyPoints,
-      cached:     false,
-      basedOnPDF: keyPoints.basedOnPDF
-    })
-  })
-)
+      cached: false,
+      basedOnPDF: keyPoints.basedOnPDF,
+    });
+  }),
+);
 
 // ─────────────────────────────────────────────────────────
 // DELETE /api/ai-study/:bookId/cache   (Admin only)
@@ -237,16 +239,16 @@ router.delete(
   "/:bookId/cache",
   asyncHandler(async (req, res) => {
     if (req.user!.role !== "admin") {
-      throw new ApiError(403, "Admin only")
+      throw new ApiError(403, "Admin only");
     }
     await AIStudyCache.deleteMany({
-      bookId: new Types.ObjectId(req.params.bookId)
-    })
+      bookId: new Types.ObjectId(req.params.bookId),
+    });
     res.json({
-      message: "Cache cleared. Next request will re-read the PDF."
-    })
-  })
-)
+      message: "Cache cleared. Next request will re-read the PDF.",
+    });
+  }),
+);
 
 // ─────────────────────────────────────────────────────────
 // POST /api/ai-study/:bookId/upload-to-gemini  (Admin only)
@@ -256,69 +258,66 @@ router.post(
   "/:bookId/upload-to-gemini",
   asyncHandler(async (req, res) => {
     if (req.user!.role !== "admin") {
-      throw new ApiError(403, "Admin only")
+      throw new ApiError(403, "Admin only");
     }
 
-    const { bookId } = req.params
+    const { bookId } = req.params;
     if (!Types.ObjectId.isValid(bookId)) {
-      throw new ApiError(400, "Invalid book ID")
+      throw new ApiError(400, "Invalid book ID");
     }
 
-    const book = await Book.findById(bookId)
-      .select("title pdfUrl")
-      .lean()
+    const book = await Book.findById(bookId).select("title pdfUrl").lean();
 
-    if (!book) throw new ApiError(404, "Book not found")
+    if (!book) throw new ApiError(404, "Book not found");
     if (!(book as any).pdfUrl) {
-      throw new ApiError(400, "No PDF URL for this book")
+      throw new ApiError(400, "No PDF URL for this book");
     }
 
     // Update status
     await Book.findByIdAndUpdate(bookId, {
       extractionStatus: "uploading",
-      extractionError:  ""
-    })
+      extractionError: "",
+    });
 
     // Upload to Gemini
-    const { reUploadFromURL } =
-      await import("../services/geminiPDFService")
+    const { reUploadFromURL } = await import("../services/geminiPDFService");
 
     const result = await reUploadFromURL(
       (book as any).pdfUrl,
-      `${(book as any).title}.pdf`
-    )
+      `${(book as any).title}.pdf`,
+    );
 
     if (result.success) {
       await Book.findByIdAndUpdate(bookId, {
-        geminiFileUri:    result.fileUri,
-        geminiMimeType:   result.mimeType,
+        geminiFileUri: result.fileUri,
+        geminiMimeType: result.mimeType,
         extractionStatus: "ready",
-        extractedAt:      new Date()
-      })
+        extractedAt: new Date(),
+      });
 
       // Clear old cache so next request uses new file
       await AIStudyCache.deleteMany({
-        bookId: new Types.ObjectId(bookId)
-      })
+        bookId: new Types.ObjectId(bookId),
+      });
 
       return res.json({
         message: "PDF uploaded to Gemini successfully. AI features are ready.",
         fileUri: result.fileUri,
-        success: true
-      })
+        success: true,
+      });
     }
 
     await Book.findByIdAndUpdate(bookId, {
       extractionStatus: "failed",
-      extractionError:  result.error || "Upload failed"
-    })
+      extractionError: result.error || "Upload failed",
+    });
 
     res.status(500).json({
       message: result.error || "Upload failed",
-      success: false
-    })
-  })
-)
+      success: false,
+    });
+  }),
+);
 
 // ─────────────────────────────────────────────────────────
 // GET /api/ai-study/:bookId/debug  (Admin only)
@@ -328,31 +327,31 @@ router.get(
   "/:bookId/debug",
   asyncHandler(async (req, res) => {
     if (req.user!.role !== "admin") {
-      throw new ApiError(403, "Admin only")
+      throw new ApiError(403, "Admin only");
     }
 
-    const { bookId } = req.params
+    const { bookId } = req.params;
     if (!Types.ObjectId.isValid(bookId)) {
-      throw new ApiError(400, "Invalid book ID")
+      throw new ApiError(400, "Invalid book ID");
     }
 
     const book = await Book.findById(bookId)
       .select(
-        "title author pdfUrl geminiFileUri geminiMimeType extractionStatus extractionError extractedAt"
+        "title author pdfUrl geminiFileUri geminiMimeType extractionStatus extractionError extractedAt",
       )
-      .lean()
+      .lean();
 
-    if (!book) throw new ApiError(404, "Book not found")
+    if (!book) throw new ApiError(404, "Book not found");
 
     const isValid = (book as any).geminiFileUri
       ? await isFileURIValid((book as any).geminiFileUri)
-      : false
+      : false;
 
     res.json({
       book,
-      isFileUriValid: isValid
-    })
-  })
-)
+      isFileUriValid: isValid,
+    });
+  }),
+);
 
-export default router
+export default router;
