@@ -1,5 +1,7 @@
 import mongoose, { Document, Schema } from "mongoose";
 
+export type BookExtractionStatus = "pending" | "uploading" | "ready" | "failed" | "no_pdf";
+
 export interface IBook extends Document {
   title: string;
   author: string;
@@ -11,6 +13,12 @@ export interface IBook extends Document {
   coverPublicId: string;
   pdfUrl: string;
   pdfPublicId: string;
+  extractionStatus: BookExtractionStatus;
+  extractionPages: number;
+  extractionError: string;
+  geminiFileUri: string;
+  geminiMimeType: string;
+  extractedAt?: Date;
   status: "draft" | "published";
   downloads: number;
   avgRating: number;
@@ -38,6 +46,30 @@ const bookSchema = new Schema<IBook>({
   coverPublicId: { type: String, default: "" },
   pdfUrl: { type: String, default: "" },
   pdfPublicId: { type: String, default: "" },
+  extractionStatus: {
+    type:    String,
+    enum:    ["pending", "uploading", "ready", "failed", "no_pdf"],
+    default: "pending"
+  },
+  extractionPages: {
+    type:    Number,
+    default: 0
+  },
+  extractionError: {
+    type:    String,
+    default: ""
+  },
+  geminiFileUri: {
+    type:    String,
+    default: ""
+  },
+  geminiMimeType: {
+    type:    String,
+    default: "application/pdf"
+  },
+  extractedAt: {
+    type: Date
+  },
   status: { type: String, enum: ["draft", "published"], default: "draft" },
   downloads: { type: Number, default: 0 },
   avgRating: { type: Number, default: 0, min: 0, max: 5 },
