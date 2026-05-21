@@ -26,8 +26,24 @@ interface AdminBook {
   downloads: number;
   avgRating: number;
   totalReviews: number;
+  extractionStatus?: "pending" | "uploading" | "ready" | "failed" | "no_pdf";
   createdAt: string;
   updatedAt: string;
+}
+
+function getAiStatusLabel(status?: AdminBook["extractionStatus"]) {
+  switch (status) {
+    case "ready":
+      return <span className="text-green-600">✅ AI Ready</span>;
+    case "uploading":
+      return <span className="text-blue-600">⏳ Uploading</span>;
+    case "failed":
+      return <span className="text-red-500">❌ Failed</span>;
+    case "no_pdf":
+      return <span className="text-gray-400">🚫 No PDF</span>;
+    default:
+      return <span className="text-amber-500">⏳ Pending</span>;
+  }
 }
 
 export default function AdminBooksPage() {
@@ -230,6 +246,9 @@ export default function AdminBooksPage() {
                       <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
                         Status
                       </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
+                        AI Status
+                      </th>
                       <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                         Actions
                       </th>
@@ -291,6 +310,11 @@ export default function AdminBooksPage() {
                               book.status === "published" ? "Published" : "Draft"
                             )}
                           </button>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="text-xs font-medium">
+                            {getAiStatusLabel(book.extractionStatus)}
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2">
@@ -371,6 +395,12 @@ export default function AdminBooksPage() {
                       >
                         {book.status === "published" ? "Published" : "Draft"}
                       </button>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">AI Status</span>
+                      <span className="text-xs font-medium">
+                        {getAiStatusLabel(book.extractionStatus)}
+                      </span>
                     </div>
                   </div>
                   <div className="flex gap-2 pt-4 border-t border-gray-100">
