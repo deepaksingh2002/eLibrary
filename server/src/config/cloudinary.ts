@@ -93,18 +93,33 @@ export async function uploadBufferToCloudinary(
         }
 
         if (!result) {
-          return reject(new Error("Cloudinary upload failed: no result returned"));
-        }
+            try {
+              const signedUrl = cloudinary.url(publicId, {
+                resource_type: "raw",
+                sign_url: true,
+                expires_at: Math.floor(Date.now() / 1000) + 600
+              });
+              if (signedUrl) {
+                console.log("[Cloudinary] Successfully generated signed URL for:", publicId);
+                return signedUrl;
+              }
+            } catch (err) {
+              console.error("[Cloudinary] Signed URL generation failed, will try unsigned URL:", err instanceof Error ? err.message : err);
+            }
 
-        resolve({
-          secure_url: result.secure_url,
-          public_id: result.public_id
-        });
-      }
-    );
+            // Fallback: attempt unsigned URL (public delivery)
+            try {
+              const unsigned = cloudinary.url(publicId, { resource_type: "raw", sign_url: false });
+              if (unsigned) {
+                console.warn("[Cloudinary] Returning unsigned URL for:", publicId);
+                return unsigned;
+              }
+            } catch (err) {
+              console.error("[Cloudinary] Unsigned URL generation failed:", err instanceof Error ? err.message : err);
+            }
 
-    // Add error handling for stream errors
-    uploadStream.on("error", (error) => {
+            console.error("[Cloudinary] Generated empty URL for publicId:", publicId);
+            return "";
       if (!uploadCompleted) {
         uploadCompleted = true;
         reject(new Error(`Stream error during upload: ${error.message}`));
