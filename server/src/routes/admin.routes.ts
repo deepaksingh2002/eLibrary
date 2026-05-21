@@ -334,6 +334,7 @@ router.get("/books", asyncHandler(async (req, res) => {
       .sort(sort)
       .skip(skip)
       .limit(limit)
+      .select("title author genre description coverUrl pdfUrl status downloads avgRating totalReviews extractionStatus extractionPages createdAt updatedAt")
       .populate("uploadedBy", "name email"),
     Book.countDocuments(filter)
   ]);
