@@ -119,6 +119,7 @@ export const downloadBook = asyncHandler(async (req: Request, res: Response) => 
   try {
     console.log(`[BookController] Download request for book: ${req.params.id} by user: ${req.user.id}`);
     const data = await downloadBookService(req.params.id, req.user);
+    console.log(`[BookController] Download URL returned for book ${req.params.id}:`, data?.downloadUrl ? data.downloadUrl.slice(0, 200) : data?.downloadUrl);
     console.log(`[BookController] Download URL generated successfully`);
     res.status(200).json(data);
   } catch (error) {

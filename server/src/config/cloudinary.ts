@@ -12,7 +12,7 @@ cloudinary.config({
 });
 
 const coverStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
+  cloudinary,
   params: {
     folder: "book-covers",
     allowed_formats: ["jpg", "png", "webp"],
@@ -21,7 +21,7 @@ const coverStorage = new CloudinaryStorage({
 });
 
 const pdfStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
+  cloudinary,
   params: {
     folder: "book-pdfs",
     allowed_formats: ["pdf"],
@@ -31,19 +31,19 @@ const pdfStorage = new CloudinaryStorage({
 
 export const uploadCover = multer({
   storage: coverStorage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 },
 }).fields([{ name: "cover", maxCount: 1 }]);
 
 export const uploadPDF = multer({
   storage: pdfStorage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: { fileSize: 50 * 1024 * 1024 },
 }).fields([{ name: "pdf", maxCount: 1 }]);
 
 export const uploadBookFiles = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 50 * 1024 * 1024,
-    files: 2
+    files: 2,
   },
   fileFilter: (req, file, cb) => {
     if (file.fieldname === "cover" && !file.mimetype.startsWith("image/")) {
@@ -59,10 +59,10 @@ export const uploadBookFiles = multer({
     }
 
     cb(null, true);
-  }
+  },
 }).fields([
   { name: "cover", maxCount: 1 },
-  { name: "pdf", maxCount: 1 }
+  { name: "pdf", maxCount: 1 },
 ]);
 
 export async function uploadBufferToCloudinary(
@@ -75,19 +75,19 @@ export async function uploadBufferToCloudinary(
 ): Promise<{ secure_url: string; public_id: string }> {
   return new Promise((resolve, reject) => {
     let uploadCompleted = false;
-    
+
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder: options.folder,
         resource_type: options.resource_type,
         public_id: options.public_id,
-        timeout: 120000, // 2 minutes timeout for large files
-        chunk_size: 6000000 // 6MB chunks for better streaming
+        timeout: 120000,
+        chunk_size: 6000000,
       },
       (error, result) => {
-        if (uploadCompleted) return; // Prevent double callback
+        if (uploadCompleted) return;
         uploadCompleted = true;
-        
+
         if (error) {
           return reject(new Error(`Cloudinary upload failed: ${error.message}`));
         }
@@ -98,12 +98,11 @@ export async function uploadBufferToCloudinary(
 
         resolve({
           secure_url: result.secure_url,
-          public_id: result.public_id
+          public_id: result.public_id,
         });
       }
     );
 
-    // Add error handling for stream errors
     uploadStream.on("error", (error) => {
       if (!uploadCompleted) {
         uploadCompleted = true;
@@ -111,19 +110,16 @@ export async function uploadBufferToCloudinary(
       }
     });
 
-    // Set a timeout for the overall operation
     const timeoutId = setTimeout(() => {
       if (!uploadCompleted) {
         uploadCompleted = true;
         uploadStream.destroy();
         reject(new Error("File upload timed out. File may be too large or connection is slow."));
       }
-    }, 180000); // 3 minutes total timeout
+    }, 180000);
 
-    // Write buffer to stream
     uploadStream.end(buffer);
-    
-    // Clear timeout on completion
+
     uploadStream.on("finish", () => {
       clearTimeout(timeoutId);
     });
@@ -138,7 +134,7 @@ export async function deleteFromCloudinary(
 
   try {
     await cloudinary.uploader.destroy(publicId, {
-      resource_type: resourceType
+      resource_type: resourceType,
     });
   } catch (error) {
     console.error("[Cloudinary] Delete failed for:", publicId, error);
@@ -151,36 +147,45 @@ export function generateSignedUrl(publicId: string): string {
     return "";
   }
 
-  try {
-    // Validate Cloudinary configuration
-    if (!cloudinary.config().cloud_name) {
-      console.error("[Cloudinary] CLOUDINARY_CLOUD_NAME not configured");
-      return "";
-    }
-
-    const url = cloudinary.url(publicId, {
-      resource_type: "raw",
-      sign_url: true,
-      expires_at: Math.floor(Date.now() / 1000) + 600
-    });
-    
-    if (!url) {
-      console.error("[Cloudinary] Generated empty URL for publicId:", publicId);
-      return "";
-    }
-    
-    console.log("[Cloudinary] Successfully generated signed URL for:", publicId);
-    return url;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("[Cloudinary] Failed to generate signed URL:", message);
-    console.error("[Cloudinary] PublicId:", publicId);
-    console.error("[Cloudinary] Config:", {
-      cloud_name: cloudinary.config().cloud_name ? "set" : "NOT SET",
-      api_key: cloudinary.config().api_key ? "set" : "NOT SET"
-    });
+  const isConfigured = Boolean(cloudinary.config().cloud_name);
+  if (!isConfigured) {
+    console.error("[Cloudinary] CLOUDINARY_CLOUD_NAME not configured");
     return "";
   }
+
+  try {
+    const signedUrl = cloudinary.url(publicId, {
+      resource_type: "raw",
+      sign_url: true,
+      expires_at: Math.floor(Date.now() / 1000) + 600,
+    });
+
+    if (signedUrl) {
+      console.log("[Cloudinary] Successfully generated signed URL for:", publicId);
+      return signedUrl;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[Cloudinary] Signed URL generation failed:", message);
+  }
+
+  try {
+    const unsignedUrl = cloudinary.url(publicId, {
+      resource_type: "raw",
+      sign_url: false,
+    });
+
+    if (unsignedUrl) {
+      console.warn("[Cloudinary] Returning unsigned URL for:", publicId);
+      return unsignedUrl;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[Cloudinary] Unsigned URL generation failed:", message);
+  }
+
+  console.error("[Cloudinary] Generated empty URL for publicId:", publicId);
+  return "";
 }
 
 export default cloudinary;

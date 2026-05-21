@@ -320,6 +320,7 @@ export async function createBook(payload: BookPayload, files: FilesMap | undefin
 
   try {
     const pdfResult = await uploadPdf(pdf);
+      console.log("[BookService] PDF upload result:", { secure_url: pdfResult.pdfUrl, public_id: pdfResult.pdfPublicId });
     uploadedResources.push({ publicId: pdfResult.pdfPublicId, resourceType: "raw" });
 
     // ── Upload to Gemini File API in background ────────────
@@ -356,6 +357,7 @@ export async function createBook(payload: BookPayload, files: FilesMap | undefin
       status,
       uploadedBy: user.id
     });
+    console.log("[BookService] Book created with PDF:", { id: book._id.toString(), pdfUrl: book.pdfUrl, pdfPublicId: book.pdfPublicId });
 
     // Background: upload to Gemini File API
     const bookIdStr  = book._id.toString()
