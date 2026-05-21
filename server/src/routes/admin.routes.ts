@@ -12,6 +12,10 @@ import { isValidObjectId, paginationParams } from "../utils/validate";
 
 const router = Router();
 
+const getParamValue = (
+  value: string | string[] | undefined,
+): string | undefined => (Array.isArray(value) ? value[0] : value);
+
 type AdminBookSortKey = "downloads" | "rating" | "reviews";
 type AdminListSortKey = "newest" | "downloads" | "rating";
 type AdminUserSortKey = "newest" | "active" | "streak";
@@ -415,9 +419,10 @@ router.get(
 router.patch(
   "/books/:id/toggle-status",
   asyncHandler(async (req, res) => {
-    if (!isValidObjectId(req.params.id))
+    const id = getParamValue(req.params.id);
+    if (!id || !isValidObjectId(id))
       throw new ApiError(400, "Invalid book id");
-    const book = await Book.findOne({ _id: req.params.id, isDeleted: false });
+    const book = await Book.findOne({ _id: id, isDeleted: false });
     if (!book) throw new ApiError(404, "Book not found");
 
     book.status = book.status === "published" ? "draft" : "published";
@@ -651,19 +656,20 @@ router.get(
 router.patch(
   "/users/:userId/role",
   asyncHandler(async (req, res) => {
-    if (!isValidObjectId(req.params.userId))
+    const userId = getParamValue(req.params.userId);
+    if (!userId || !isValidObjectId(userId))
       throw new ApiError(400, "Invalid user id");
     const { role } = req.body;
     if (!["admin", "user", "guest"].includes(role)) {
       throw new ApiError(400, "Role must be one of admin, user, guest");
     }
 
-    if (req.params.userId === req.user!.id) {
+    if (userId === req.user!.id) {
       throw new ApiError(400, "Cannot change your own role");
     }
 
     const user = await User.findByIdAndUpdate(
-      req.params.userId,
+      userId,
       { role },
       { new: true },
     ).select("name email role");
@@ -677,19 +683,20 @@ router.patch(
 router.delete(
   "/users/:userId",
   asyncHandler(async (req, res) => {
-    if (!isValidObjectId(req.params.userId))
+    const userId = getParamValue(req.params.userId);
+    if (!userId || !isValidObjectId(userId))
       throw new ApiError(400, "Invalid user id");
-    if (req.params.userId === req.user!.id) {
+    if (userId === req.user!.id) {
       throw new ApiError(400, "Cannot delete your own account");
     }
 
     const user = await User.findByIdAndUpdate(
-      req.params.userId,
+      userId,
       {
         isDeleted: true,
         refreshTokens: [],
         passwordResetToken: undefined,
-        email: `deleted_${req.params.userId}@deleted.com`,
+        email: `deleted_${userId}@deleted.com`,
       },
       { new: true },
     );
@@ -703,7 +710,8 @@ router.delete(
 router.get(
   "/users/:userId/activity",
   asyncHandler(async (req, res) => {
-    if (!isValidObjectId(req.params.userId))
+    const userId = getParamValue(req.params.userId);
+    if (!userId || !isValidObjectId(userId))
       throw new ApiError(400, "Invalid user id");
     const { page, limit, skip } = paginationParams({
       ...req.query,
@@ -711,12 +719,12 @@ router.get(
     });
 
     const [activities, total] = await Promise.all([
-      UserActivity.find({ userId: req.params.userId })
+      UserActivity.find({ userId })
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .populate("bookId", "title author coverUrl"),
-      UserActivity.countDocuments({ userId: req.params.userId }),
+      UserActivity.countDocuments({ userId }),
     ]);
 
     res.status(200).json({

@@ -15,6 +15,10 @@ import {
 
 const router = Router();
 
+const getParamValue = (
+  value: string | string[] | undefined,
+): string | undefined => (Array.isArray(value) ? value[0] : value);
+
 function validateReviewTextField(
   value: unknown,
   fieldName: string,
@@ -114,8 +118,9 @@ router.get(
 router.get(
   "/book/:bookId",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params;
-    if (!isValidObjectId(bookId)) throw new ApiError(400, "Invalid book id");
+    const bookId = getParamValue(req.params.bookId);
+    if (!bookId || !isValidObjectId(bookId))
+      throw new ApiError(400, "Invalid book id");
 
     const { page, limit, skip } = paginationParams(req.query);
     const sort = (req.query.sort as string) || "helpful";
@@ -149,8 +154,9 @@ router.get(
 router.get(
   "/book/:bookId/distribution",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params;
-    if (!isValidObjectId(bookId)) throw new ApiError(400, "Invalid book id");
+    const bookId = getParamValue(req.params.bookId);
+    if (!bookId || !isValidObjectId(bookId))
+      throw new ApiError(400, "Invalid book id");
 
     const raw = await Review.aggregate([
       { $match: { bookId: new Types.ObjectId(bookId), isRemoved: false } },
@@ -231,8 +237,8 @@ router.patch(
   "/:reviewId",
   protect,
   asyncHandler(async (req, res) => {
-    const { reviewId } = req.params;
-    if (!isValidObjectId(reviewId))
+    const reviewId = getParamValue(req.params.reviewId);
+    if (!reviewId || !isValidObjectId(reviewId))
       throw new ApiError(400, "Invalid review id");
 
     const review = await Review.findById(reviewId);
@@ -268,8 +274,8 @@ router.delete(
   "/:reviewId",
   protect,
   asyncHandler(async (req, res) => {
-    const { reviewId } = req.params;
-    if (!isValidObjectId(reviewId))
+    const reviewId = getParamValue(req.params.reviewId);
+    if (!reviewId || !isValidObjectId(reviewId))
       throw new ApiError(400, "Invalid review id");
 
     const review = await Review.findById(reviewId);
@@ -302,8 +308,8 @@ router.post(
   "/:reviewId/helpful",
   protect,
   asyncHandler(async (req, res) => {
-    const { reviewId } = req.params;
-    if (!isValidObjectId(reviewId))
+    const reviewId = getParamValue(req.params.reviewId);
+    if (!reviewId || !isValidObjectId(reviewId))
       throw new ApiError(400, "Invalid review id");
 
     const userId = new Types.ObjectId(req.user!.id);
@@ -343,8 +349,8 @@ router.patch(
   protect,
   requireRole("admin"),
   asyncHandler(async (req, res) => {
-    const { reviewId } = req.params;
-    if (!isValidObjectId(reviewId))
+    const reviewId = getParamValue(req.params.reviewId);
+    if (!reviewId || !isValidObjectId(reviewId))
       throw new ApiError(400, "Invalid review id");
 
     const { action } = req.body as { action: "flag" | "unflag" | "remove" };

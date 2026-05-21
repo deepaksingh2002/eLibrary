@@ -18,6 +18,9 @@ import {
 } from "../services/book.service";
 
 const isValidId = (id: string) => Types.ObjectId.isValid(id);
+const getParamValue = (
+  value: string | string[] | undefined,
+): string | undefined => (Array.isArray(value) ? value[0] : value);
 
 export const getAllBooks = asyncHandler(async (req: Request, res: Response) => {
   const data = await listBooks(req.query as Record<string, string>, req.user);
@@ -37,11 +40,12 @@ export const autocompleteBooks = asyncHandler(
 );
 
 export const getBookById = asyncHandler(async (req: Request, res: Response) => {
-  if (!isValidId(req.params.id)) {
+  const id = getParamValue(req.params.id);
+  if (!id || !isValidId(id)) {
     throw new ApiError(400, "Invalid book ID");
   }
 
-  const data = await getBookByIdService(req.params.id, req.user);
+  const data = await getBookByIdService(id, req.user);
   res.status(200).json(data);
 });
 
@@ -60,12 +64,13 @@ export const createBook = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const updateBook = asyncHandler(async (req: Request, res: Response) => {
-  if (!isValidId(req.params.id)) {
+  const id = getParamValue(req.params.id);
+  if (!id || !isValidId(id)) {
     throw new ApiError(400, "Invalid book ID");
   }
 
   const data = await updateBookService(
-    req.params.id,
+    id,
     req.body as Record<string, unknown>,
     req.files as Record<string, Express.Multer.File[] | undefined> | undefined,
   );
@@ -74,50 +79,55 @@ export const updateBook = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const deleteBook = asyncHandler(async (req: Request, res: Response) => {
-  if (!isValidId(req.params.id)) {
+  const id = getParamValue(req.params.id);
+  if (!id || !isValidId(id)) {
     throw new ApiError(400, "Invalid book ID");
   }
 
-  const data = await softDeleteBook(req.params.id);
+  const data = await softDeleteBook(id);
   res.status(200).json(data);
 });
 
 export const permanentDeleteBook = asyncHandler(
   async (req: Request, res: Response) => {
-    if (!isValidId(req.params.id)) {
+    const id = getParamValue(req.params.id);
+    if (!id || !isValidId(id)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
-    const data = await hardDeleteBook(req.params.id);
+    const data = await hardDeleteBook(id);
     res.status(200).json(data);
   },
 );
 
 export const toggleBookStatus = asyncHandler(
   async (req: Request, res: Response) => {
-    if (!isValidId(req.params.id)) {
+    const id = getParamValue(req.params.id);
+    if (!id || !isValidId(id)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
-    const data = await toggleBookStatusService(req.params.id);
+    const data = await toggleBookStatusService(id);
     res.status(200).json(data);
   },
 );
 
 export const resolveBookPdf = asyncHandler(
   async (req: Request, res: Response) => {
-    if (!isValidId(req.params.id)) {
+    const id = getParamValue(req.params.id);
+    if (!id || !isValidId(id)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
-    const data = await resolveBookPdfService(req.params.id);
+    const data = await resolveBookPdfService(id);
     res.status(200).json(data);
   },
 );
 
 export const downloadBook = asyncHandler(
   async (req: Request, res: Response) => {
-    if (!isValidId(req.params.id)) {
+    const id = getParamValue(req.params.id);
+    if (!id || !isValidId(id)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
@@ -127,11 +137,11 @@ export const downloadBook = asyncHandler(
 
     try {
       console.log(
-        `[BookController] Download request for book: ${req.params.id} by user: ${req.user.id}`,
+        `[BookController] Download request for book: ${id} by user: ${req.user.id}`,
       );
-      const data = await downloadBookService(req.params.id, req.user);
+      const data = await downloadBookService(id, req.user);
       console.log(
-        `[BookController] Download URL returned for book ${req.params.id}:`,
+        `[BookController] Download URL returned for book ${id}:`,
         data?.downloadUrl ? data.downloadUrl.slice(0, 200) : data?.downloadUrl,
       );
       console.log(`[BookController] Download URL generated successfully`);
@@ -146,7 +156,8 @@ export const downloadBook = asyncHandler(
 
 export const summarizeBook = asyncHandler(
   async (req: Request, res: Response) => {
-    if (!isValidId(req.params.id)) {
+    const id = getParamValue(req.params.id);
+    if (!id || !isValidId(id)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
@@ -154,7 +165,7 @@ export const summarizeBook = asyncHandler(
       throw new ApiError(401, "Authentication required");
     }
 
-    const data = await summarizeBookService(req.params.id);
+    const data = await summarizeBookService(id);
     res.status(200).json(data);
   },
 );

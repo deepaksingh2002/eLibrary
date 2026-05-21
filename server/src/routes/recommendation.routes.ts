@@ -17,6 +17,10 @@ import { ApiError } from "../utils/ApiError";
 
 const router = Router();
 
+const getParamValue = (
+  value: string | string[] | undefined,
+): string | undefined => (Array.isArray(value) ? value[0] : value);
+
 router.get(
   "/",
   protect,
@@ -64,9 +68,9 @@ router.get(
 router.get(
   "/similar/:bookId",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params;
+    const bookId = getParamValue(req.params.bookId);
 
-    if (!Types.ObjectId.isValid(bookId)) {
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
@@ -92,9 +96,9 @@ router.get(
   protect,
   asyncHandler(async (req, res) => {
     const userId = req.user!.id;
-    const { bookId } = req.params;
+    const bookId = getParamValue(req.params.bookId);
 
-    if (!Types.ObjectId.isValid(bookId)) {
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
 

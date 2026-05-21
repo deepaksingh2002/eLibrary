@@ -4,34 +4,35 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@reduxjs/toolkit": "^2.11.2",
+    "@reduxjs/toolkit": "^2.12.0",
     "@tanstack/react-query": "^5.100.11",
-    "axios": "^1.5.1",
-    "next": "14.2.35",
+    "axios": "^1.16.1",
+    "next": "16.2.6",
     "pdfjs-dist": "^5.7.284",
-    "react": "^18",
-    "react-dom": "^18",
-    "react-hook-form": "^7.73.1",
-    "react-redux": "^9.2.0",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-hook-form": "^7.76.0",
+    "react-redux": "^9.3.0",
     "recharts": "^3.8.1",
-    "zod": "^4.3.6",
-    "zustand": "^5.0.12"
+    "zod": "^4.4.3",
+    "zustand": "^5.0.13"
   },
   "devDependencies": {
-    "@types/node": "^20",
-    "@types/pdfjs-dist": "^2.10.377",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.35",
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/node": "^25",
+    "@types/pdfjs-dist": "^2.10.378",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^10",
+    "eslint-config-next": "16.2.6",
     "postcss": "^8",
-    "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6"
   }
 }

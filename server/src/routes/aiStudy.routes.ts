@@ -15,6 +15,10 @@ import { isFileURIValid } from "../services/geminiPDFService";
 const router = Router();
 router.use(protect);
 
+const getParamValue = (
+  value: string | string[] | undefined,
+): string | undefined => (Array.isArray(value) ? value[0] : value);
+
 // ─── Helper: get book data needed for AI ─────────────────
 async function getBook(bookId: string) {
   const book = await Book.findOne({
@@ -82,8 +86,8 @@ async function saveCache(
 router.get(
   "/:bookId/status",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params;
-    if (!Types.ObjectId.isValid(bookId)) {
+    const bookId = getParamValue(req.params.bookId);
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
@@ -112,8 +116,8 @@ router.get(
 router.get(
   "/:bookId/summary",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params;
-    if (!Types.ObjectId.isValid(bookId)) {
+    const bookId = getParamValue(req.params.bookId);
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
@@ -163,12 +167,12 @@ router.get(
 router.get(
   "/:bookId/mcq",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params;
+    const bookId = getParamValue(req.params.bookId);
     const count = Math.min(
       20,
       Math.max(5, parseInt(req.query.count as string) || 10),
     );
-    if (!Types.ObjectId.isValid(bookId)) {
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
@@ -203,8 +207,8 @@ router.get(
 router.get(
   "/:bookId/key-points",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params;
-    if (!Types.ObjectId.isValid(bookId)) {
+    const bookId = getParamValue(req.params.bookId);
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
@@ -241,8 +245,12 @@ router.delete(
     if (req.user!.role !== "admin") {
       throw new ApiError(403, "Admin only");
     }
+    const bookId = getParamValue(req.params.bookId);
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
+      throw new ApiError(400, "Invalid book ID");
+    }
     await AIStudyCache.deleteMany({
-      bookId: new Types.ObjectId(req.params.bookId),
+      bookId: new Types.ObjectId(bookId),
     });
     res.json({
       message: "Cache cleared. Next request will re-read the PDF.",
@@ -261,8 +269,8 @@ router.post(
       throw new ApiError(403, "Admin only");
     }
 
-    const { bookId } = req.params;
-    if (!Types.ObjectId.isValid(bookId)) {
+    const bookId = getParamValue(req.params.bookId);
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
@@ -330,8 +338,8 @@ router.get(
       throw new ApiError(403, "Admin only");
     }
 
-    const { bookId } = req.params;
-    if (!Types.ObjectId.isValid(bookId)) {
+    const bookId = getParamValue(req.params.bookId);
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
 

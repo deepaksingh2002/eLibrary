@@ -12,16 +12,20 @@ import { logActivity } from "../middleware/activityLogger";
 
 const router = Router();
 
+const getParamValue = (
+  value: string | string[] | undefined,
+): string | undefined => (Array.isArray(value) ? value[0] : value);
+
 router.use(protect);
 
 router.patch(
   "/:bookId",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params;
+    const bookId = getParamValue(req.params.bookId);
     const userId = req.user!.id;
     const { progress, sessionMinutes } = req.body;
 
-    if (!Types.ObjectId.isValid(bookId)) {
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
@@ -104,10 +108,10 @@ router.patch(
 router.get(
   "/:bookId",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params;
+    const bookId = getParamValue(req.params.bookId);
     const userId = req.user!.id;
 
-    if (!Types.ObjectId.isValid(bookId)) {
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
@@ -203,11 +207,11 @@ router.get(
 router.post(
   "/:bookId/bookmarks",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params;
+    const bookId = getParamValue(req.params.bookId);
     const userId = req.user!.id;
     const { page, note = "" } = req.body;
 
-    if (!Types.ObjectId.isValid(bookId)) {
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
     if (!page || Number.isNaN(Number(page)) || Number(page) < 1) {
@@ -252,10 +256,10 @@ router.post(
 router.get(
   "/:bookId/bookmarks",
   asyncHandler(async (req, res) => {
-    const { bookId } = req.params;
+    const bookId = getParamValue(req.params.bookId);
     const userId = req.user!.id;
 
-    if (!Types.ObjectId.isValid(bookId)) {
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID");
     }
 
@@ -272,11 +276,14 @@ router.get(
 router.patch(
   "/:bookId/bookmarks/:bookmarkId",
   asyncHandler(async (req, res) => {
-    const { bookId, bookmarkId } = req.params;
+    const bookId = getParamValue(req.params.bookId);
+    const bookmarkId = getParamValue(req.params.bookmarkId);
     const userId = req.user!.id;
     const { note } = req.body;
 
     if (
+      !bookId ||
+      !bookmarkId ||
       !Types.ObjectId.isValid(bookId) ||
       !Types.ObjectId.isValid(bookmarkId)
     ) {
@@ -309,10 +316,13 @@ router.patch(
 router.delete(
   "/:bookId/bookmarks/:bookmarkId",
   asyncHandler(async (req, res) => {
-    const { bookId, bookmarkId } = req.params;
+    const bookId = getParamValue(req.params.bookId);
+    const bookmarkId = getParamValue(req.params.bookmarkId);
     const userId = req.user!.id;
 
     if (
+      !bookId ||
+      !bookmarkId ||
       !Types.ObjectId.isValid(bookId) ||
       !Types.ObjectId.isValid(bookmarkId)
     ) {

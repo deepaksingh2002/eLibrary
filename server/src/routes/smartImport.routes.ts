@@ -17,6 +17,10 @@ import {
 
 const router = Router();
 
+const getParamValue = (
+  value: string | string[] | undefined,
+): string | undefined => (Array.isArray(value) ? value[0] : value);
+
 function limitText(value: unknown, maxLength: number): string {
   if (typeof value !== "string") {
     return "";
@@ -143,7 +147,11 @@ router.get(
 router.get(
   "/details/:googleId",
   asyncHandler(async (req, res) => {
-    const { googleId } = req.params;
+    const googleId = getParamValue(req.params.googleId);
+
+    if (!googleId) {
+      throw new ApiError(400, "Invalid Google Books ID");
+    }
 
     const raw = await getGoogleBookById(googleId);
     if (!raw) {
