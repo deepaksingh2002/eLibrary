@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -36,6 +36,11 @@ export default function AdminDashboardPage() {
     "#2563EB", "#7C3AED", "#DC2626", "#D97706",
     "#059669", "#0891B2", "#DB2777", "#65A30D"
   ];
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const downloadCsv = async (type: "books" | "users") => {
     setExporting(type);
@@ -74,104 +79,34 @@ export default function AdminDashboardPage() {
   };
 
   return (
-    <ProtectedRoute requiredRole="admin">
-      <div>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-sm text-gray-400">Analytics & insights</p>
-        </div>
-        
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => downloadCsv("books")}
-            disabled={exporting !== null}
-            className="text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-xl transition-colors"
-          >
-            {exporting === "books" ? "Exporting..." : "Export Books CSV"}
-          </button>
-          <button 
-            onClick={() => downloadCsv("users")}
-            disabled={exporting !== null}
-            className="text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-xl transition-colors"
-          >
-            {exporting === "users" ? "Exporting..." : "Export Users CSV"}
-          </button>
+    <ProtectedRoute>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+        <h2 className="font-bold text-gray-900">Download Trends</h2>
+        <div className="flex gap-2 bg-gray-50 p-1 rounded-full">
+          {(["7d", "30d", "90d", "12m"] as const).map((p) => (
+            <button
+              key={p}
+              className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                trendPeriod === p ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
+              }`}
+              onClick={() => setTrendPeriod(p)}
+            >
+              {p}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-        {[
-          { 
-            title: "Total Books", val: kpis?.totalBooks, sub: `${kpis?.publishedBooks || 0} published`,
-            icon: "📚", bg: "bg-blue-50", text: "text-blue-600"
-          },
-          { 
-            title: "Total Users", val: kpis?.totalUsers, sub: `+${kpis?.newUsersThisMonth || 0} this month`,
-            subColor: kpis?.newUsersThisMonth && kpis.newUsersThisMonth > 0 ? "text-green-600" : "text-gray-400",
-            icon: "👤", bg: "bg-green-50", text: "text-green-600"
-          },
-          { 
-            title: "Total Downloads", val: kpis?.totalDownloads?.toLocaleString(), sub: `+${kpis?.downloadsThisMonth?.toLocaleString() || 0} this month`,
-            icon: "↓", bg: "bg-purple-50", text: "text-purple-600"
-          },
-          { 
-            title: "Avg Rating", val: `${kpis?.averageRating || 0} ★`, sub: `${kpis?.totalReviews || 0} reviews`,
-            icon: "★", bg: "bg-yellow-50", text: "text-yellow-500"
-          }
-        ].map((item, i) => (
-          <div key={i} className="bg-white border border-gray-100 rounded-xl p-4 flex flex-col">
-            {kpisLoading ? (
-              <div className="animate-pulse flex flex-col h-full justify-between">
-                <div className="h-4 w-24 bg-gray-200 rounded mb-2" />
-                <div className="h-8 w-16 bg-gray-200 rounded mb-2" />
-                <div className="h-3 w-20 bg-gray-200 rounded" />
-              </div>
-            ) : (
-              <>
-                <div className="text-gray-500 text-sm font-medium mb-2">{item.title}</div>
-                <div className="flex items-end justify-between mt-auto">
-                  <div>
-                    <div className="text-2xl font-bold text-gray-900">{item.val || 0}</div>
-                    <div className={`text-xs mt-1 ${item.subColor || "text-gray-400"}`}>{item.sub}</div>
-                  </div>
-                  <div className={`h-10 w-10 rounded-lg flex items-center justify-center text-xl ${item.bg} ${item.text}`}>
-                    {item.icon}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-white border border-gray-100 rounded-xl p-6 mb-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-          <h2 className="font-bold text-gray-900">Download Trends</h2>
-          <div className="flex gap-2 bg-gray-50 p-1 rounded-full">
-            {(["7d", "30d", "90d", "12m"] as const).map(p => (
-              <button
-                key={p}
-                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                  trendPeriod === p ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
-                }`}
-                onClick={() => setTrendPeriod(p)}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-
+      <div className="mt-4">
         {trendLoading ? (
           <div className="h-[280px] w-full bg-gray-50 animate-pulse rounded-xl" />
-        ) : (
-          <div className="h-[280px] w-full">
+        ) : mounted ? (
+          <div className="h-[280px] w-full" style={{ minWidth: 0, minHeight: 0 }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trend?.trend || []} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                <XAxis 
-                  dataKey="date" 
+                <XAxis
+                  dataKey="date"
                   tickFormatter={(val) => {
                     const d = new Date(val);
                     if (trendPeriod === "12m") return d.toLocaleDateString("en", { month: "short" });
@@ -182,29 +117,18 @@ export default function AdminDashboardPage() {
                   axisLine={false}
                   dy={10}
                 />
-                <YAxis 
-                  tick={{ fontSize: 12, fill: "#9CA3AF" }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={45}
-                  dx={-10}
-                />
-                <RechartsTooltip 
+                <YAxis tick={{ fontSize: 12, fill: "#9CA3AF" }} tickLine={false} axisLine={false} width={45} dx={-10} />
+                <RechartsTooltip
                   contentStyle={{ border: "1px solid #E5E7EB", borderRadius: 12, boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)", fontSize: 13 }}
                   formatter={(val) => [Number(val ?? 0).toLocaleString(), "Downloads"]}
                   labelFormatter={(label) => new Date(label).toLocaleDateString("en", { month: "long", day: "numeric", year: "numeric" })}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="count" 
-                  stroke="#2563EB" 
-                  strokeWidth={2} 
-                  dot={false}
-                  activeDot={{ r: 4, fill: "#2563EB", strokeWidth: 0 }}
-                />
+                <Line type="monotone" dataKey="count" stroke="#2563EB" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#2563EB", strokeWidth: 0 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
+        ) : (
+          <div className="h-[280px] w-full bg-gray-50 rounded-xl" />
         )}
       </div>
 
@@ -216,34 +140,38 @@ export default function AdminDashboardPage() {
           ) : genres?.distribution?.length === 0 ? (
             <div className="h-[280px] flex items-center justify-center text-gray-400">No genre data available</div>
           ) : (
-            <div className="h-[280px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={genres?.distribution || []}
-                    dataKey="count"
-                    nameKey="genre"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={100}
-                    innerRadius={55}
-                    paddingAngle={2}
-                  >
-                    {genres?.distribution?.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip 
-                    formatter={(val, name) => [Number(val ?? 0), String(name ?? "")]}
-                    contentStyle={{ border: "1px solid #E5E7EB", borderRadius: 12, boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)", fontSize: 13 }}
-                  />
-                  <Legend 
-                    iconType="circle"
-                    iconSize={8}
-                    formatter={(val) => <span style={{ fontSize: 12, color: "#6B7280" }}>{val}</span>}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+            <div className="h-[280px] w-full" style={{ minWidth: 0, minHeight: 0 }}>
+                {mounted ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={genres?.distribution || []}
+                        dataKey="count"
+                        nameKey="genre"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={100}
+                        innerRadius={55}
+                        paddingAngle={2}
+                      >
+                        {genres?.distribution?.map((_, i) => (
+                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip 
+                        formatter={(val, name) => [Number(val ?? 0), String(name ?? "")]}
+                        contentStyle={{ border: "1px solid #E5E7EB", borderRadius: 12, boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)", fontSize: 13 }}
+                      />
+                      <Legend 
+                        iconType="circle"
+                        iconSize={8}
+                        formatter={(val) => <span style={{ fontSize: 12, color: "#6B7280" }}>{val}</span>}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[280px] w-full bg-gray-50 rounded-xl" />
+                )}
             </div>
           )}
         </div>
@@ -253,47 +181,51 @@ export default function AdminDashboardPage() {
           {userGrowthLoading ? (
             <div className="h-[280px] w-full bg-gray-50 animate-pulse rounded-xl" />
           ) : (
-            <div className="h-[280px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={userGrowth?.growth || []} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="userGrowthGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563EB" stopOpacity={0.1} />
-                      <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                  <XAxis 
-                    dataKey="date" 
-                    tickFormatter={(val) => new Date(val).toLocaleDateString("en", { month: "short" })}
-                    tick={{ fontSize: 12, fill: "#9CA3AF" }}
-                    tickLine={false} 
-                    axisLine={false}
-                    dy={10}
-                  />
-                  <YAxis 
-                    tick={{ fontSize: 12, fill: "#9CA3AF" }}
-                    tickLine={false} 
-                    axisLine={false}
-                    width={45}
-                    dx={-10}
-                  />
-                  <RechartsTooltip 
-                    contentStyle={{ border: "1px solid #E5E7EB", borderRadius: 12, boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)", fontSize: 13 }}
-                    labelFormatter={(label) => new Date(label).toLocaleDateString("en", { month: "long", year: "numeric" })}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="cumulativeUsers" 
-                    stroke="#2563EB" 
-                    strokeWidth={2} 
-                    fill="url(#userGrowthGrad)" 
-                    name="Total Users" 
-                    dot={false}
-                    activeDot={{ r: 4, fill: "#2563EB", strokeWidth: 0 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="h-[280px] w-full" style={{ minWidth: 0, minHeight: 0 }}>
+                {mounted ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={userGrowth?.growth || []} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="userGrowthGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#2563EB" stopOpacity={0.1} />
+                        <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                    <XAxis 
+                      dataKey="date" 
+                      tickFormatter={(val) => new Date(val).toLocaleDateString("en", { month: "short" })}
+                      tick={{ fontSize: 12, fill: "#9CA3AF" }}
+                      tickLine={false} 
+                      axisLine={false}
+                      dy={10}
+                    />
+                    <YAxis 
+                      tick={{ fontSize: 12, fill: "#9CA3AF" }}
+                      tickLine={false} 
+                      axisLine={false}
+                      width={45}
+                      dx={-10}
+                    />
+                    <RechartsTooltip 
+                      contentStyle={{ border: "1px solid #E5E7EB", borderRadius: 12, boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)", fontSize: 13 }}
+                      labelFormatter={(label) => new Date(label).toLocaleDateString("en", { month: "long", year: "numeric" })}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="cumulativeUsers" 
+                      stroke="#2563EB" 
+                      strokeWidth={2} 
+                      fill="url(#userGrowthGrad)" 
+                      name="Total Users" 
+                      dot={false}
+                      activeDot={{ r: 4, fill: "#2563EB", strokeWidth: 0 }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[280px] w-full bg-gray-50 rounded-xl" />
+              )}
             </div>
           )}
         </div>
@@ -362,7 +294,6 @@ export default function AdminDashboardPage() {
             )}
           </div>
         </div>
-      </div>
       </div>
     </ProtectedRoute>
   );

@@ -7,6 +7,7 @@ import {
   uploadBufferToCloudinary,
 } from "../config/cloudinary";
 import { ApiError } from "../utils/ApiError";
+import { normalizeExtractionStatus } from "../utils/bookAiStatus";
 import { summarizePdfBook } from "./claudeService";
 import { resolveExternalPdfUrl } from "./externalPdfResolver";
 
@@ -188,8 +189,17 @@ export async function listBooks(query: BookListQuery, user?: AuthUser) {
     Book.countDocuments(filter),
   ]);
 
+  const normalizedBooks = books.map((book) => ({
+    ...book,
+    extractionStatus: normalizeExtractionStatus(book as {
+      extractionStatus?: string;
+      geminiFileUri?: string;
+      pdfUrl?: string;
+    }),
+  }));
+
   return {
-    books,
+    books: normalizedBooks,
     total,
     page,
     totalPages: Math.ceil(total / limit),
@@ -311,6 +321,15 @@ export async function getBookById(id: string, user?: AuthUser) {
     throw new ApiError(404, "Book not found");
   }
 
+  const normalizedBook = {
+    ...book,
+    extractionStatus: normalizeExtractionStatus(book as {
+      extractionStatus?: string;
+      geminiFileUri?: string;
+      pdfUrl?: string;
+    }),
+  };
+
   if (user) {
     setImmediate(() => {
       UserActivity.create({
@@ -321,7 +340,7 @@ export async function getBookById(id: string, user?: AuthUser) {
     });
   }
 
-  return { book };
+  return { book: normalizedBook };
 }
 
 export async function createBook(

@@ -9,8 +9,10 @@ import {
   generateBookSummary,
   generateMCQQuestions,
   generateKeyPoints,
+  generateFlashcards,
 } from "../services/aiStudyService";
 import { isFileURIValid } from "../services/geminiPDFService";
+import { normalizeExtractionStatus } from "../utils/bookAiStatus";
 
 const router = Router();
 router.use(protect);
@@ -39,34 +41,34 @@ async function getBook(bookId: string) {
 // ─── Helper: get cached result ────────────────────────────
 async function getCached(
   bookId: string,
-  type: "summary" | "mcq" | "keypoints",
+  type: "summary" | "mcq" | "keypoints" | "flashcards",
 ) {
   return AIStudyCache.findOne({
     bookId: new Types.ObjectId(bookId),
     type,
     expiresAt: { $gt: new Date() },
-  }).lean();
+  } as any).lean();
 }
 
 // ─── Helper: save to cache ────────────────────────────────
 async function saveCache(
   bookId: string,
-  type: "summary" | "mcq" | "keypoints",
+  type: "summary" | "mcq" | "keypoints" | "flashcards",
   data: any,
 ) {
   try {
     await AIStudyCache.findOneAndUpdate(
-      {
+      ({
         bookId: new Types.ObjectId(bookId),
         type,
-      },
+      } as any),
       {
         $set: {
           data,
           createdAt: new Date(),
           expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         },
-      },
+      } as any,
       { upsert: true },
     );
   } catch (err: any) {
@@ -78,6 +80,43 @@ async function saveCache(
     console.error("[AIStudy] saveCache error:", err);
   }
 }
+
+// ─────────────────────────────────────────────────────────
+// GET /api/ai-study/:bookId/flashcards?count=8
+// ─────────────────────────────────────────────────────────
+router.get(
+  "/:bookId/flashcards",
+  asyncHandler(async (req, res) => {
+    const bookId = getParamValue(req.params.bookId);
+    const count = Math.min(20, Math.max(3, parseInt(req.query.count as string) || 8));
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
+      throw new ApiError(400, "Invalid book ID");
+    }
+
+    const cached = await getCached(bookId, "flashcards");
+    if (cached) {
+      return res.json({
+        flashcards: cached.data,
+        total: Array.isArray(cached.data) ? cached.data.length : 0,
+        cached: true,
+        basedOnPDF: cached.data?.basedOnPDF || true,
+      });
+    }
+
+    const book = await getBook(bookId);
+    console.log("[AIStudy] Generating flashcards:", (book as any).title);
+
+    const flashcards = await generateFlashcards(book as any, count);
+    await saveCache(bookId, "flashcards", flashcards);
+
+    res.json({
+      flashcards,
+      total: flashcards.length,
+      cached: false,
+      basedOnPDF: true,
+    });
+  }),
+);
 
 // ─────────────────────────────────────────────────────────
 // GET /api/ai-study/:bookId/status
@@ -93,16 +132,22 @@ router.get(
 
     const book = await Book.findById(bookId)
       .select(
-        "title extractionStatus extractionError " + "geminiFileUri extractedAt",
+        "title pdfUrl extractionStatus extractionError " + "geminiFileUri extractedAt",
       )
       .lean();
 
     if (!book) throw new ApiError(404, "Book not found");
 
+    const extractionStatus = normalizeExtractionStatus(book as {
+      extractionStatus?: string;
+      geminiFileUri?: string;
+      pdfUrl?: string;
+    });
+
     res.json({
       title: (book as any).title,
-      extractionStatus: (book as any).extractionStatus || "pending",
-      isReady: (book as any).extractionStatus === "ready",
+      extractionStatus,
+      isReady: extractionStatus === "ready",
       hasFileUri: !!(book as any).geminiFileUri,
       error: (book as any).extractionError || null,
       extractedAt: (book as any).extractedAt || null,

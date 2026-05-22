@@ -9,6 +9,8 @@ import { computeRecommendations } from "../services/recommendationEngine";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { isValidObjectId, paginationParams } from "../utils/validate";
+import { normalizeExtractionStatus } from "../utils/bookAiStatus";
+import { scheduleBookAiProcessing } from "../services/bookAiProcessing";
 
 const router = Router();
 
@@ -401,14 +403,26 @@ router.get(
         .skip(skip)
         .limit(limit)
         .select(
-          "title author genre description coverUrl pdfUrl status downloads avgRating totalReviews extractionStatus extractionPages createdAt updatedAt",
+          "title author genre description coverUrl pdfUrl geminiFileUri status downloads avgRating totalReviews extractionStatus extractionPages createdAt updatedAt",
         )
         .populate("uploadedBy", "name email"),
       Book.countDocuments(filter),
     ]);
 
+    const normalizedBooks = books.map((book) => {
+      const plainBook = book.toObject();
+      return {
+        ...plainBook,
+        extractionStatus: normalizeExtractionStatus(plainBook as {
+          extractionStatus?: string;
+          geminiFileUri?: string;
+          pdfUrl?: string;
+        }),
+      };
+    });
+
     res.status(200).json({
-      books,
+      books: normalizedBooks,
       total,
       page,
       totalPages: Math.ceil(total / limit),
@@ -468,6 +482,14 @@ router.post(
       try {
         const result = await Book.insertMany(validBooks, { ordered: false });
         imported = result.length;
+
+        for (const book of result) {
+          scheduleBookAiProcessing({
+            bookId: book._id.toString(),
+            pdfUrl: book.pdfUrl || "",
+            title: book.title || "Unknown",
+          });
+        }
       } catch (error: unknown) {
         if (
           typeof error === "object" &&

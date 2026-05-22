@@ -4,6 +4,7 @@ import { requireRole } from "../middleware/rbac.middleware";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import Book from "../models/Book";
+import { scheduleBookAiProcessing } from "../services/bookAiProcessing";
 import {
   searchBooksOnline,
   getGoogleBookById,
@@ -226,6 +227,12 @@ router.post(
       externalId: externalId || "",
     });
 
+    scheduleBookAiProcessing({
+      bookId: book._id.toString(),
+      pdfUrl: book.pdfUrl || "",
+      title: book.title,
+    });
+
     res.status(201).json({
       message: "Book added to library successfully",
       book,
@@ -270,7 +277,7 @@ router.post(
           continue;
         }
 
-        await Book.create({
+        const createdBook = await Book.create({
           title: bookData.title?.trim() || "Unknown",
           author: bookData.author?.trim() || "Unknown",
           description: limitText(bookData.description, 2000),
@@ -286,6 +293,12 @@ router.post(
           isbn: limitText(bookData.isbn, 32),
           importSource: normalizeImportSource(bookData.source),
           externalId: bookData.externalId || "",
+        });
+
+        scheduleBookAiProcessing({
+          bookId: createdBook._id.toString(),
+          pdfUrl: createdBook.pdfUrl || "",
+          title: createdBook.title,
         });
 
         results.imported++;

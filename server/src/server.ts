@@ -9,6 +9,7 @@ import mongoose from "mongoose";
 import app from "./app";
 import { connectDB } from "./config/db";
 import { startRecommendationCron } from "./jobs/recommendationCron";
+import { initAIWorker } from "./services/aiQueue";
 
 const PORT = Number(process.env.PORT || 5000);
 
@@ -24,6 +25,13 @@ const startServer = async () => {
   });
 
   startRecommendationCron();
+  // Initialize AI background worker (requires Redis configured via REDIS_URL)
+  try {
+    initAIWorker();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn("[Server] Could not initialize AI worker:", message);
+  }
 
   async function shutdown(signal: string) {
     console.info(`[Server] ${signal} received. Shutting down gracefully...`);

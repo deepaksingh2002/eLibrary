@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface IAIStudyCache extends Document {
   bookId: mongoose.Types.ObjectId;
-  type: "summary" | "mcq" | "keypoints";
+  type: "summary" | "mcq" | "keypoints" | "flashcards";
   data: any;
   createdAt: Date;
   expiresAt: Date;
@@ -16,7 +16,7 @@ const AIStudyCacheSchema = new Schema<IAIStudyCache>({
   },
   type: {
     type: String,
-    enum: ["summary", "mcq", "keypoints"],
+    enum: ["summary", "mcq", "keypoints", "flashcards"],
     required: true,
   },
   data: { type: Schema.Types.Mixed, required: true },

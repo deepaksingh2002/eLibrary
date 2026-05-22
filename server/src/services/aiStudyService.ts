@@ -139,7 +139,7 @@ Do not give generic answers based on the book title.`;
   });
 
   if (!result.success || !result.text) {
-    console.error("[AIStudy] Summary generation failed:", result.error);
+    console.error("[AIStudy] Summary generation failed:", result.error, result.text?.slice?.(0,500));
     return FALLBACK_SUMMARY;
   }
 
@@ -209,15 +209,7 @@ Return ONLY valid JSON — no markdown:
       "topic": "Chapter or section this question comes from"
     }
   ]
-}
-
-Requirements:
-- Mix: 3 easy (definitions/recall), 4 medium (understanding), 3 hard (analysis)
-- Every question MUST come from specific content in the PDF
-- Wrong options must be plausible but clearly incorrect per the text
-- Topics should reference actual chapter/section names from the PDF
-- Explanations must reference specific content from the PDF
-- Do NOT create generic questions not based on this specific PDF`;
+}`;
 
   const result = await generateFromPDF({
     fileUri: fileInfo.fileUri,
@@ -227,12 +219,15 @@ Requirements:
   });
 
   if (!result.success || !result.text) {
-    console.error("[AIStudy] MCQ generation failed:", result.error);
+    console.error("[AIStudy] MCQ generation failed:", result.error, result.text?.slice?.(0,500));
     return [];
   }
 
   try {
     const parsed = parseJSON(result.text);
+    if ((!parsed.questions || parsed.questions.length === 0)) {
+      console.warn('[AIStudy] MCQ parsed but no questions:', { parsedSample: result.text?.slice?.(0,500) });
+    }
     return (parsed.questions || [])
       .slice(0, count)
       .map((q: any, i: number) => ({
@@ -248,14 +243,74 @@ Requirements:
         explanation: q.explanation || "",
         topic: q.topic || "General",
       }))
-      .filter(
-        (q: MCQQuestion) => q.question.length > 10 && q.options.A.length > 2,
-      );
+      .filter((q: MCQQuestion) => q.question && q.question.length > 5);
   } catch (err: any) {
     console.error("[AIStudy] MCQ parse error:", err.message);
     return [];
   }
 }
+
+// ─────────────────────────────────────────────────────────
+// GENERATE FLASHCARDS
+// Gemini reads the PDF and returns simple Q/A flashcards
+// ─────────────────────────────────────────────────────────
+export async function generateFlashcards(
+  book: BookForAI,
+  count = 8,
+): Promise<{ question: string; answer: string }[]> {
+  if (!process.env.GEMINI_API_KEY) return [];
+
+  const fileInfo = await getValidFileURI({
+    _id: book._id,
+    title: book.title,
+    pdfUrl: book.pdfUrl,
+    geminiFileUri: book.geminiFileUri,
+    geminiMimeType: book.geminiMimeType,
+  });
+
+  if (!fileInfo.fileUri) {
+    console.error("[AIStudy] No file URI for flashcards:", fileInfo.error);
+    return [];
+  }
+
+  const prompt = `You are an expert study assistant.
+Read this PDF and generate exactly ${count} concise flashcards.
+
+Return ONLY valid JSON — no markdown:
+{
+  "flashcards": [
+    { "question": "Short question based on the PDF", "answer": "Short answer citing the PDF" }
+  ]
+}
+
+Requirements:
+- Questions and answers must come from the PDF content.
+- Keep Q/A concise (one or two sentences).`;
+
+  const result = await generateFromPDF({
+    fileUri: fileInfo.fileUri,
+    mimeType: fileInfo.mimeType,
+    prompt,
+    maxTokens: 1500,
+  });
+
+  if (!result.success || !result.text) {
+    console.error("[AIStudy] Flashcards generation failed:", result.error);
+    return [];
+  }
+
+  try {
+    const parsed = parseJSON(result.text);
+    return (parsed.flashcards || []).slice(0, count).map((f: any) => ({
+      question: f.question || "",
+      answer: f.answer || "",
+    })).filter((f: any) => f.question && f.answer);
+  } catch (err: any) {
+    console.error("[AIStudy] Flashcards parse error:", err.message);
+    return [];
+  }
+}
+
 
 // ─────────────────────────────────────────────────────────
 // GENERATE KEY POINTS + EXAM TIPS + INTERVIEW TOPICS

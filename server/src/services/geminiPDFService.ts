@@ -178,40 +178,73 @@ export async function generateFromPDF(params: {
   prompt: string;
   maxTokens: number;
 }): Promise<GenerateResult> {
-  try {
-    const { genAI } = getClients();
+  // Implement bounded retry/backoff to handle transient rate limits (429)
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const { genAI } = getClients();
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      generationConfig: {
-        maxOutputTokens: params.maxTokens,
-        temperature: 0.2,
-        responseMimeType: "application/json",
-      },
-    });
-
-    const result = await model.generateContent([
-      {
-        fileData: {
-          mimeType: params.mimeType || "application/pdf",
-          fileUri: params.fileUri,
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.0-flash",
+        generationConfig: {
+          maxOutputTokens: params.maxTokens,
+          temperature: 0.2,
+          responseMimeType: "application/json",
         },
-      },
-      {
-        text: params.prompt,
-      },
-    ]);
+      });
 
-    const text = result.response.text().trim();
-    return { success: true, text };
-  } catch (err: any) {
-    console.error("[GeminiPDF] Generate failed:", err.message);
-    return {
-      success: false,
-      text: "",
-      error: err.message,
-    };
+      const result = await model.generateContent([
+        {
+          fileData: {
+            mimeType: params.mimeType || "application/pdf",
+            fileUri: params.fileUri,
+          },
+        },
+        {
+          text: params.prompt,
+        },
+      ]);
+
+      try {
+        const text = await result.response.text();
+        const trimmed = text?.trim?.();
+        console.log(`[GeminiPDF] generateContent returned ${trimmed?.length || 0} chars (attempt ${attempt})`);
+        console.debug(`[GeminiPDF] sample: ${trimmed?.slice?.(0,500)}`);
+        return { success: true, text: trimmed };
+      } catch (e: any) {
+        console.error('[GeminiPDF] Failed to read response text:', e?.stack || e?.message || e);
+        return { success: false, text: '', error: e?.message || String(e) };
+      }
+    } catch (err: any) {
+      // Try to parse a RetryInfo / suggested delay from the error message
+      const msg = err?.message || String(err || "");
+      let retrySeconds: number | null = null;
+
+      // Common phrase from Gemini errors: "Please retry in 52.516668498s"
+      const m = msg.match(/Please retry in\s*([0-9]+(?:\.[0-9]+)?)s/);
+      if (m) retrySeconds = Number(m[1]);
+
+      // If RetryInfo not present, fallback to exponential backoff
+      const backoffSec = retrySeconds ?? Math.pow(2, attempt - 1);
+
+      console.warn(`[GeminiPDF] generateContent attempt ${attempt} failed: ${msg}`);
+      if (attempt < maxAttempts) {
+        console.info(`[GeminiPDF] retrying in ${backoffSec}s (attempt ${attempt + 1}/${maxAttempts})`);
+        await new Promise((res) => setTimeout(res, Math.round(backoffSec * 1000)));
+        continue;
+      }
+
+      // final failure
+      console.error('[GeminiPDF] Generate failed (final):', err?.stack || err?.message || err);
+      return {
+        success: false,
+        text: "",
+        error: err?.message || String(err),
+      };
+    }
   }
+  // Should not reach here
+  return { success: false, text: "", error: "Unexpected error in generateFromPDF" };
 }
 
 // ─────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import {
   useGetAdminBooksQuery,
   useToggleBookStatusMutation,
   useDeleteBookMutation,
+  useReExtractBookAiContentMutation,
 } from "../../../../store/services/api";
 
 interface AdminBook {
@@ -73,6 +74,22 @@ export default function AdminBooksPage() {
   const [toggleStatus] = useToggleBookStatusMutation();
   const [deleteBook, { isLoading: isDeletingBook }] =
     useDeleteBookMutation();
+  const [reExtractBookAiContent, { isLoading: isReExtracting }] =
+    useReExtractBookAiContentMutation();
+
+  const handleRetryAi = async (bookId: string) => {
+    try {
+      const response = await reExtractBookAiContent(bookId).unwrap();
+      toast.success(response.message || "PDF uploaded to Gemini");
+      refetch();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to retry AI upload";
+      toast.error(message);
+    }
+  };
+
+  const isRetryableAiStatus = (status?: AdminBook["extractionStatus"]) =>
+    status === "pending" || status === "failed" || status === "no_pdf";
 
   const handleToggleStatus = async (bookId: string) => {
     setTogglingId(bookId);
@@ -303,7 +320,7 @@ export default function AdminBooksPage() {
                               book.status === "published"
                                 ? "bg-green-100 text-green-700 hover:bg-green-200"
                                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                            } disabled:opacity-50 flex items-center justify-center min-w-[100px]`}
+                            } flex min-w-25 items-center justify-center disabled:opacity-50`}
                           >
                             {togglingId === book._id ? (
                               <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -319,6 +336,15 @@ export default function AdminBooksPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2">
+                            {isRetryableAiStatus(book.extractionStatus) && (
+                              <button
+                                onClick={() => handleRetryAi(book._id)}
+                                disabled={isReExtracting}
+                                className="rounded-lg border border-purple-200 px-2 py-1 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isReExtracting ? "Retrying..." : "Retry AI"}
+                              </button>
+                            )}
                             <Link href={`/admin/books/${book._id}/edit`}>
                               <button className="text-xs font-medium text-blue-600 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50">
                                 Edit
@@ -352,7 +378,7 @@ export default function AdminBooksPage() {
                   className="rounded-xl border border-gray-100 bg-white p-4"
                 >
                   <div className="flex gap-4 mb-4">
-                    <div className="relative h-20 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
+                    <div className="relative h-20 w-14 shrink-0 overflow-hidden rounded-lg bg-gray-100">
                       {book.coverUrl ? (
                         <Image
                           src={book.coverUrl}
@@ -406,6 +432,15 @@ export default function AdminBooksPage() {
                     </div>
                   </div>
                   <div className="flex gap-2 pt-4 border-t border-gray-100">
+                    {isRetryableAiStatus(book.extractionStatus) ? (
+                      <button
+                        onClick={() => handleRetryAi(book._id)}
+                        disabled={isReExtracting}
+                        className="flex-1 rounded-lg border border-purple-200 py-2 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isReExtracting ? "Retrying..." : "Retry AI"}
+                      </button>
+                    ) : null}
                     <Link href={`/admin/books/${book._id}/edit`} className="flex-1">
                       <button className="w-full text-xs font-medium text-blue-600 hover:text-blue-700 py-2 rounded hover:bg-blue-50">
                         Edit

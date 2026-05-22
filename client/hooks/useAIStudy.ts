@@ -1,9 +1,10 @@
 "use client"
 import { useState } from "react"
+import { useAuthStore } from "../store/authStore"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
 
-export type AIStudyTab = "summary" | "mcq" | "keypoints"
+export type AIStudyTab = "flashcards" | "summary" | "mcq" | "keypoints"
 
 export interface MCQQuestion {
   id: number
@@ -60,7 +61,7 @@ export function useAIStudy(bookId: string) {
     queryKey: ["ai-summary", bookId],
     queryFn: () =>
       api.get(`/api/ai-study/${bookId}/summary`).then((r) => r.data),
-    enabled: isOpen && activeTab === "summary" && !!bookId,
+    enabled: isOpen && activeTab === "summary" && !!bookId && useAuthStore.getState().isAuthenticated,
     staleTime: 1000 * 60 * 60 * 24 * 7, // 7 days
     retry: 1,
   })
@@ -69,7 +70,7 @@ export function useAIStudy(bookId: string) {
     queryKey: ["ai-mcq", bookId],
     queryFn: () =>
       api.get(`/api/ai-study/${bookId}/mcq?count=10`).then((r) => r.data),
-    enabled: isOpen && activeTab === "mcq" && !!bookId,
+    enabled: isOpen && activeTab === "mcq" && !!bookId && useAuthStore.getState().isAuthenticated,
     staleTime: 1000 * 60 * 60 * 24 * 7,
     retry: 1,
   })
@@ -78,7 +79,15 @@ export function useAIStudy(bookId: string) {
     queryKey: ["ai-keypoints", bookId],
     queryFn: () =>
       api.get(`/api/ai-study/${bookId}/key-points`).then((r) => r.data),
-    enabled: isOpen && activeTab === "keypoints" && !!bookId,
+    enabled: isOpen && activeTab === "keypoints" && !!bookId && useAuthStore.getState().isAuthenticated,
+    staleTime: 1000 * 60 * 60 * 24 * 7,
+    retry: 1,
+  })
+
+  const flashcardsQuery = useQuery({
+    queryKey: ["ai-flashcards", bookId],
+    queryFn: () => api.get(`/api/ai-study/${bookId}/flashcards?count=8`).then((r) => r.data),
+    enabled: isOpen && activeTab === "flashcards" && !!bookId && useAuthStore.getState().isAuthenticated,
     staleTime: 1000 * 60 * 60 * 24 * 7,
     retry: 1,
   })
@@ -89,6 +98,13 @@ export function useAIStudy(bookId: string) {
     setActiveTab,
     openPanel: () => setIsOpen(true),
     closePanel: () => setIsOpen(false),
+    // expose manual refetch helpers for UI retry buttons
+    refetch: {
+      summary: summaryQuery.refetch,
+      mcq: mcqQuery.refetch,
+      keyPoints: keyPointsQuery.refetch,
+      flashcards: flashcardsQuery.refetch,
+    },
     summary: {
       data: summaryQuery.data?.summary || null,
       isLoading: summaryQuery.isLoading || summaryQuery.isFetching,
@@ -107,6 +123,13 @@ export function useAIStudy(bookId: string) {
       isLoading: keyPointsQuery.isLoading || keyPointsQuery.isFetching,
       cached: keyPointsQuery.data?.cached || false,
       basedOnPDF: keyPointsQuery.data?.basedOnPDF || false,
+    },
+    flashcards: {
+      cards: (flashcardsQuery.data?.flashcards || []) as { question: string; answer: string }[],
+      isLoading: flashcardsQuery.isLoading || flashcardsQuery.isFetching,
+      cached: flashcardsQuery.data?.cached || false,
+      basedOnPDF: flashcardsQuery.data?.basedOnPDF || false,
+      total: flashcardsQuery.data?.total || (flashcardsQuery.data?.flashcards?.length || 0),
     },
   }
 }
