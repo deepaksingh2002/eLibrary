@@ -111,7 +111,7 @@ export default function SettingsPage() {
                     {avatarState.isLoading ? (
                       <Spinner size="sm" />
                     ) : user.avatar ? (
-                      <Image src={user.avatar} alt={user.name} fill className="object-cover" />
+                      <Image src={user.avatar} alt={user.name} fill className="object-cover" sizes="96px" />
                     ) : (
                       <span className="text-3xl font-bold text-blue-600">{user.name.charAt(0).toUpperCase()}</span>
                     )}

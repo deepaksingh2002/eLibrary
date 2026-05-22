@@ -6,10 +6,12 @@ interface Props {
 }
 
 export async function generateMetadata(props: any): Promise<Metadata> {
-  const { params } = (await props) as Props;
+  const propsResolved = await props;
+  const paramsResolved = await propsResolved.params;
+  const id = paramsResolved.id;
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   try {
-    const response = await fetch(`${API_URL}/api/books/${params.id}`, {
+    const response = await fetch(`${API_URL}/api/books/${id}`, {
       next: { revalidate: 3600 },
     });
     if (!response.ok) throw new Error("Not found");

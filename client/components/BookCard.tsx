@@ -18,6 +18,7 @@ export const BookCard: React.FC<BookCardProps> = ({ book }) => {
               alt={`Cover of ${book.title}`}
               fill
               className="object-cover"
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
             />
           ) : (
             <div className="flex w-full h-full items-center justify-center text-gray-400">

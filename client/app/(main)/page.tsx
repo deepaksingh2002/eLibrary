@@ -59,14 +59,18 @@ export default function HomePage() {
 
   return (
     <div>
-      <section className="w-full bg-blue-900 py-20 text-white">
-        <div className="mx-auto max-w-7xl px-4 text-center">
-          <h1 className="mb-4 text-5xl font-bold">Your Digital Library</h1>
-          <p className="mx-auto mb-8 max-w-2xl text-xl text-blue-100">
+      <section className="relative w-full overflow-hidden bg-gradient-to-br from-blue-950 via-blue-900 to-sky-800 py-20 text-white">
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute -left-24 top-8 h-64 w-64 rounded-full bg-sky-400 blur-3xl" />
+          <div className="absolute right-0 top-32 h-72 w-72 rounded-full bg-indigo-400 blur-3xl" />
+        </div>
+        <div className="relative mx-auto max-w-7xl px-4 text-center">
+          <h1 className="mb-4 text-5xl font-bold tracking-tight sm:text-6xl">Your Digital Library</h1>
+          <p className="mx-auto mb-8 max-w-2xl text-xl text-blue-100/90">
             Discover, read, and track your academic journey
           </p>
 
-          <form onSubmit={handleSearch} className="mx-auto mb-10 flex max-w-xl" role="search">
+          <form onSubmit={handleSearch} className="mx-auto mb-10 flex max-w-2xl overflow-hidden rounded-2xl bg-white p-1 shadow-2xl shadow-blue-950/20 ring-1 ring-white/10" role="search">
             <label htmlFor="hero-search" className="sr-only">Search books</label>
             <input
               id="hero-search"
@@ -80,22 +84,22 @@ export default function HomePage() {
                   handleSearch(event);
                 }
               }}
-              className="flex-grow rounded-l-lg px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-grow rounded-xl border-0 bg-white px-4 py-4 text-gray-900 outline-none placeholder:text-gray-400 focus:ring-0"
             />
             <button
               type="submit"
               aria-label="Submit search"
-              className="rounded-r-lg bg-blue-600 px-6 py-3 font-medium transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="rounded-xl bg-blue-600 px-6 py-4 font-semibold transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-white"
             >
               Search
             </button>
           </form>
 
-          <div className="flex justify-center gap-8 text-blue-200 text-sm md:text-base">
+          <div className="flex flex-wrap justify-center gap-6 text-sm text-blue-100/90 md:gap-8 md:text-base">
             <div><span className="font-bold text-white">12,400+</span> Books</div>
-            <div className="w-px bg-blue-700"></div>
+            <div className="hidden h-6 w-px bg-white/20 md:block"></div>
             <div><span className="font-bold text-white">3,800</span> Users</div>
-            <div className="w-px bg-blue-700"></div>
+            <div className="hidden h-6 w-px bg-white/20 md:block"></div>
             <div><span className="font-bold text-white">98,500</span> Downloads</div>
           </div>
         </div>

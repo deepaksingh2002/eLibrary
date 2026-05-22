@@ -265,6 +265,7 @@ export default function AdminBooksPage() {
                                 alt={book.title}
                                 fill
                                 className="object-cover"
+                                sizes="40px"
                               />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center text-[10px] text-gray-400">
@@ -358,6 +359,7 @@ export default function AdminBooksPage() {
                           alt={book.title}
                           fill
                           className="object-cover"
+                          sizes="56px"
                         />
                       ) : null}
                     </div>

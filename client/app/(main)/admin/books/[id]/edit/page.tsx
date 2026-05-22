@@ -391,6 +391,7 @@ export default function EditBookPage() {
                         alt={book.title}
                         fill
                         className="object-cover"
+                        sizes="128px"
                       />
                     </div>
                     <p className="mt-2 text-xs text-gray-500">Current cover</p>
