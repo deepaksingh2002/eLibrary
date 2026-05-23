@@ -1,8 +1,7 @@
 "use client"
 import { useState } from "react"
 import { useAuthStore } from "../store/authStore"
-import { useQuery } from "@tanstack/react-query"
-import api from "@/lib/api"
+import { useGetAiStudySummaryQuery, useGetAiStudyMcqQuery, useGetAiStudyKeyPointsQuery, useGetAiStudyFlashcardsQuery } from "../store/services/api"
 
 export type AIStudyTab = "flashcards" | "summary" | "mcq" | "keypoints"
 
@@ -56,40 +55,30 @@ function normalizeKeyPointsData(data: Partial<KeyPointsData> | null | undefined)
 export function useAIStudy(bookId: string) {
   const [activeTab, setActiveTab] = useState<AIStudyTab>("summary")
   const [isOpen, setIsOpen] = useState(false)
-
-  const summaryQuery = useQuery({
-    queryKey: ["ai-summary", bookId],
-    queryFn: () =>
-      api.get(`/api/ai-study/${bookId}/summary`).then((r) => r.data),
-    enabled: isOpen && activeTab === "summary" && !!bookId && useAuthStore.getState().isAuthenticated,
-    staleTime: 1000 * 60 * 60 * 24 * 7, // 7 days
-    retry: 1,
+  // Use RTK Query hooks to keep shapes consistent with the server
+  const summaryQuery = useGetAiStudySummaryQuery(bookId, {
+    skip: !(isOpen && activeTab === "summary" && !!bookId && useAuthStore.getState().isAuthenticated),
+    refetchOnMountOrArgChange: false,
   })
 
-  const mcqQuery = useQuery({
-    queryKey: ["ai-mcq", bookId],
-    queryFn: () =>
-      api.get(`/api/ai-study/${bookId}/mcq?count=10`).then((r) => r.data),
-    enabled: isOpen && activeTab === "mcq" && !!bookId && useAuthStore.getState().isAuthenticated,
-    staleTime: 1000 * 60 * 60 * 24 * 7,
-    retry: 1,
+  const mcqQuery = useGetAiStudyMcqQuery(bookId, {
+    skip: !(isOpen && activeTab === "mcq" && !!bookId && useAuthStore.getState().isAuthenticated),
+    refetchOnMountOrArgChange: false,
   })
 
-  const keyPointsQuery = useQuery({
-    queryKey: ["ai-keypoints", bookId],
-    queryFn: () =>
-      api.get(`/api/ai-study/${bookId}/key-points`).then((r) => r.data),
-    enabled: isOpen && activeTab === "keypoints" && !!bookId && useAuthStore.getState().isAuthenticated,
-    staleTime: 1000 * 60 * 60 * 24 * 7,
-    retry: 1,
+  const keyPointsQuery = useGetAiStudyKeyPointsQuery(bookId, {
+    skip: !(isOpen && activeTab === "keypoints" && !!bookId && useAuthStore.getState().isAuthenticated),
+    refetchOnMountOrArgChange: false,
   })
-
-  const flashcardsQuery = useQuery({
-    queryKey: ["ai-flashcards", bookId],
-    queryFn: () => api.get(`/api/ai-study/${bookId}/flashcards?count=8`).then((r) => r.data),
-    enabled: isOpen && activeTab === "flashcards" && !!bookId && useAuthStore.getState().isAuthenticated,
-    staleTime: 1000 * 60 * 60 * 24 * 7,
-    retry: 1,
+  const flashcardsQuery = useGetAiStudyFlashcardsQuery(bookId, {
+    skip: !(isOpen && activeTab === "flashcards" && !!bookId && useAuthStore.getState().isAuthenticated),
+    refetchOnMountOrArgChange: false,
+  })
+  
+  // Status fetch to show PDF readiness and errors
+  const statusQuery = useGetAiStudyStatusQuery(bookId, {
+    skip: !(isOpen && !!bookId && useAuthStore.getState().isAuthenticated),
+    refetchOnMountOrArgChange: false,
   })
 
   return {
@@ -104,6 +93,7 @@ export function useAIStudy(bookId: string) {
       mcq: mcqQuery.refetch,
       keyPoints: keyPointsQuery.refetch,
       flashcards: flashcardsQuery.refetch,
+      status: statusQuery.refetch,
     },
     summary: {
       data: summaryQuery.data?.summary || null,
@@ -130,6 +120,10 @@ export function useAIStudy(bookId: string) {
       cached: flashcardsQuery.data?.cached || false,
       basedOnPDF: flashcardsQuery.data?.basedOnPDF || false,
       total: flashcardsQuery.data?.total || (flashcardsQuery.data?.flashcards?.length || 0),
+    },
+    status: {
+      data: statusQuery.data || null,
+      isLoading: statusQuery.isLoading || statusQuery.isFetching,
     },
   }
 }

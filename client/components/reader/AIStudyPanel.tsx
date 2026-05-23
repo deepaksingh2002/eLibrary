@@ -13,7 +13,7 @@ interface Props {
 }
 
 export default function AIStudyPanel({ bookId, bookTitle }: Props) {
-  const { isOpen, activeTab, setActiveTab, openPanel, closePanel, summary, mcq, keyPoints, flashcards, refetch } = useAIStudy(bookId)
+  const { isOpen, activeTab, setActiveTab, openPanel, closePanel, summary, mcq, keyPoints, flashcards, refetch, status } = useAIStudy(bookId)
   const { user, isAuthenticated } = useAuthStore()
 
   const tabs: { key: AIStudyTab; icon: string; label: string }[] = [
@@ -133,6 +133,34 @@ export default function AIStudyPanel({ bookId, bookTitle }: Props) {
               <p className="text-xs text-slate-500 dark:text-slate-400">AI features require authentication. Please log in to generate summaries, quizzes, and flashcards from PDFs.</p>
               <div className="mt-4">
                 <a href="/auth/login" className="rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Sign in</a>
+              </div>
+            </div>
+          )}
+          {/* Show PDF / extraction status to users */}
+          {!status.isLoading && status.data && !status.data.hasPdf && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm mb-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-semibold">No PDF available</div>
+                  <div className="mt-1 text-sm">This book doesn't have a PDF uploaded. AI Study features require the PDF to generate content.</div>
+                </div>
+                <div className="flex-shrink-0">
+                  <button onClick={() => refetch.status?.()} className="rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white">Refresh</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!status.isLoading && status.data && !status.data.isReady && status.data.hasPdf && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 shadow-sm mb-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-semibold">PDF processing in progress</div>
+                  <div className="mt-1 text-sm">Status: {status.data.extractionStatus || 'processing'}. Try again in a few minutes or ask an admin to check the PDF.</div>
+                </div>
+                <div className="flex-shrink-0">
+                  <button onClick={() => refetch.status?.()} className="rounded-full bg-rose-600 px-3 py-1 text-xs font-semibold text-white">Refresh</button>
+                </div>
               </div>
             </div>
           )}
