@@ -120,12 +120,13 @@ export async function generateFromPdfWithLangChain(params: {
   prompt: string;
   maxOutputTokens: number;
 }): Promise<LangChainGenerateResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  const googleKey = process.env.GEMINI_API_KEY;
+  const openAiKey = process.env.OPENAI_API_KEY;
+  if (!googleKey && !openAiKey) {
     return {
       success: false,
       text: "",
-      error: "GEMINI_API_KEY is not configured",
+      error: "No AI provider key configured (GEMINI_API_KEY or OPENAI_API_KEY required)",
     };
   }
 
@@ -144,14 +145,6 @@ export async function generateFromPdfWithLangChain(params: {
 
   try {
     const context = await buildContext(extraction.text);
-    const { ChatGoogleGenerativeAI } = await import("@langchain/google-genai");
-
-    const model = new ChatGoogleGenerativeAI({
-      apiKey,
-      model: "gemini-2.0-flash",
-      temperature: 0.2,
-      maxOutputTokens: params.maxOutputTokens,
-    });
 
     const finalPrompt = [
       "You must return only strict JSON. Do not add markdown fences.",
@@ -163,8 +156,33 @@ export async function generateFromPdfWithLangChain(params: {
       params.prompt,
     ].join("\n\n");
 
-    const response = await (model as any).invoke(finalPrompt);
-    const rawText = extractTextFromModelResponse(response.content);
+    let rawText = "";
+
+    if (googleKey) {
+      const { ChatGoogleGenerativeAI } = await import("@langchain/google-genai");
+      const model = new ChatGoogleGenerativeAI({
+        apiKey: googleKey,
+        model: "gemini-2.0-flash",
+        temperature: 0.2,
+        maxOutputTokens: params.maxOutputTokens,
+      });
+
+      const response = await (model as any).invoke(finalPrompt);
+      rawText = extractTextFromModelResponse(response.content);
+    } else {
+      const openaiMod = await import("@langchain/openai");
+      // Support different export names across versions
+      const ChatOpenAI: any = openaiMod.ChatOpenAI || openaiMod.OpenAI || openaiMod.default;
+      const model = new ChatOpenAI({
+        apiKey: openAiKey,
+        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        temperature: 0.2,
+        maxTokens: params.maxOutputTokens,
+      } as any);
+
+      const response = await (model as any).invoke(finalPrompt);
+      rawText = extractTextFromModelResponse(response.content);
+    }
 
     if (!rawText) {
       return {
