@@ -180,6 +180,8 @@ interface BookSummaryResponse {
   content?: string;
   keyPoints?: string[];
   key_points?: string[];
+  readerNotes?: string[];
+  readerNotesAIGenerated?: boolean;
   provider?: string;
   cached?: boolean;
   cachedAt?: string;

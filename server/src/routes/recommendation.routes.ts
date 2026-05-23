@@ -9,9 +9,9 @@ import {
   getSimilarBooks,
 } from "../services/recommendationEngine";
 import {
-  explainRecommendation,
-  isGeminiAvailable,
-} from "../services/claudeService";
+  generateRecommendationExplanation,
+  isAIServiceAvailable,
+} from "../services/aiBookInsightsService";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 
@@ -125,7 +125,7 @@ router.get(
         genre: (activity.bookId as any).genre,
       }));
 
-    const explanation = await explainRecommendation({
+    const explanation = await generateRecommendationExplanation({
       targetBook: {
         title: targetBook.title,
         author: targetBook.author,
@@ -136,7 +136,7 @@ router.get(
       userName: userId,
     });
 
-    const aiGenerated = await isGeminiAvailable();
+    const aiGenerated = await isAIServiceAvailable();
 
     res.status(200).json({
       explanation,

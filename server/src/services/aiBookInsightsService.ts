@@ -13,7 +13,7 @@ let availabilityCache: {
   checkedAt: number;
 } | null = null;
 
-export async function explainRecommendation(params: {
+export async function generateRecommendationExplanation(params: {
   targetBook: {
     title: string;
     author: string;
@@ -76,7 +76,7 @@ Do not use any markdown formatting.`;
   }
 }
 
-export async function isGeminiAvailable(): Promise<boolean> {
+export async function isAIServiceAvailable(): Promise<boolean> {
   if (!process.env.GEMINI_API_KEY) return false;
 
   if (availabilityCache && Date.now() - availabilityCache.checkedAt < 300_000) {
@@ -99,7 +99,7 @@ export async function isGeminiAvailable(): Promise<boolean> {
   }
 }
 
-export async function summarizePdfBook(params: {
+export async function summarizeBookWithAIInsights(params: {
   title: string;
   author: string;
   genre: string;

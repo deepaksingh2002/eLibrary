@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import type { Review } from "../types";
 import { useGetBookSummaryQuery, useGetBookExplanationQuery } from "../store/services/api";
 
 interface AIExplanationModalProps {
@@ -8,6 +9,9 @@ interface AIExplanationModalProps {
   bookTitle: string;
   onClose: () => void;
   mode?: "explanation" | "summary";
+  readerReviews?: Review[];
+  averageRating?: number;
+  totalReviews?: number;
 }
 
 export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
@@ -15,6 +19,9 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
   bookTitle,
   onClose,
   mode = "explanation",
+  readerReviews = [],
+  averageRating,
+  totalReviews,
 }) => {
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -40,6 +47,36 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
   const explanationText = data && "explanation" in data ? data.explanation : undefined;
   const keyPoints = data && "keyPoints" in data ? data.keyPoints : undefined;
   const isAIGenerated = Boolean(data && "isAIGenerated" in data && data.isAIGenerated);
+  const apiReaderNotes = isSummary && data && "readerNotes" in data ? data.readerNotes : undefined;
+  const apiReaderNotesGenerated = Boolean(data && "readerNotesAIGenerated" in data && data.readerNotesAIGenerated);
+
+  const readerNotes = React.useMemo(() => {
+    if (Array.isArray(apiReaderNotes) && apiReaderNotes.length > 0) {
+      return apiReaderNotes.slice(0, 3);
+    }
+
+    if (!readerReviews.length) return [];
+
+    const notes: string[] = [];
+    if (typeof averageRating === "number" && typeof totalReviews === "number") {
+      notes.push(`Readers rate this book ${averageRating.toFixed(1)}/5 across ${totalReviews} review${totalReviews === 1 ? "" : "s"}.`);
+    }
+
+    const sortedReviews = [...readerReviews].sort((left, right) => right.rating - left.rating);
+    const topPraise = sortedReviews.find((review) => review.title || review.body);
+    if (topPraise) {
+      const praiseText = [topPraise.title, topPraise.body].filter(Boolean).join(" - ");
+      notes.push(`A common positive note: ${praiseText.slice(0, 180)}${praiseText.length > 180 ? "..." : ""}`);
+    }
+
+    const lowerRated = sortedReviews.find((review) => review.rating <= 3 && (review.title || review.body));
+    if (lowerRated) {
+      const concernText = [lowerRated.title, lowerRated.body].filter(Boolean).join(" - ");
+      notes.push(`Some readers also mention: ${concernText.slice(0, 180)}${concernText.length > 180 ? "..." : ""}`);
+    }
+
+    return notes.slice(0, 3);
+  }, [apiReaderNotes, averageRating, readerReviews, totalReviews]);
 
   if (!bookId) return null;
 
@@ -56,7 +93,7 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
         <div className="flex justify-between items-start mb-4">
           <div>
             <h2 id="ai-modal-title" className="font-bold text-xl text-gray-900">
-              {isSummary ? "AI PDF Summary" : "Why this book?"}
+              {isSummary ? "AI Summary + Reader Notes" : "Why this book?"}
             </h2>
             <p className="text-sm text-gray-400 line-clamp-2 mt-1">for {bookTitle}</p>
           </div>
@@ -117,6 +154,20 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
                 </ul>
               )}
 
+              {isSummary && readerNotes.length > 0 && (
+                <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="mb-3 text-sm font-semibold text-slate-900">What readers on the internet think</p>
+                  <ul className="space-y-2">
+                    {readerNotes.map((note) => (
+                      <li key={note} className="flex gap-2 text-sm leading-relaxed text-slate-700">
+                        <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-emerald-500" />
+                        <span>{note}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div className="mt-4 flex items-center gap-2 flex-wrap">
                 {isAIGenerated ? (
                   <span className="text-xs text-purple-600 flex items-center gap-1 bg-purple-50 px-3 py-1.5 rounded-full border border-purple-200">
@@ -124,7 +175,11 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
                   </span>
                 ) : (
                   <span className="text-xs text-blue-600 flex items-center gap-1 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-200">
-                    {isSummary ? "Fallback summary" : "Based on your reading patterns"}
+                    {isSummary
+                      ? apiReaderNotesGenerated
+                        ? "Live web reader notes included"
+                        : "AI summary + web reader notes"
+                      : "Based on your reading patterns"}
                   </span>
                 )}
               </div>

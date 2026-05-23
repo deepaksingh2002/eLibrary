@@ -388,6 +388,9 @@ export default function BookDetailClient() {
           bookId={showAIExplanation ? id : null}
           bookTitle={book.title}
           mode="summary"
+          readerReviews={reviewsData?.reviews ?? []}
+          averageRating={book.avgRating}
+          totalReviews={book.totalReviews}
           onClose={() => setShowAIExplanation(false)}
         />
       )}

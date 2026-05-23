@@ -8,7 +8,7 @@ import {
 } from "../config/cloudinary";
 import { ApiError } from "../utils/ApiError";
 import { normalizeExtractionStatus } from "../utils/bookAiStatus";
-import { summarizePdfBook } from "./claudeService";
+import { summarizeBookWithAIInsights, summarizeReaderOpinions } from "./aiBookInsightsService";
 import { resolveExternalPdfUrl } from "./externalPdfResolver";
 
 type AuthUser = {
@@ -764,19 +764,29 @@ export async function summarizeBook(id: string) {
     ? generateSignedUrl(book.pdfPublicId)
     : book.pdfUrl;
 
-  const summary = await summarizePdfBook({
+  const [summary, readerOpinions] = await Promise.all([
+    summarizeBookWithAIInsights({
     title: book.title,
     author: book.author,
     genre: book.genre,
     description: book.description,
     tags: book.tags,
     pdfUrl,
-  });
+    }),
+    summarizeReaderOpinions({
+      title: book.title,
+      author: book.author,
+      genre: book.genre,
+      tags: book.tags,
+    }),
+  ]);
 
   return {
     bookId: book._id,
     title: book.title,
     provider: "ai",
+    readerNotes: readerOpinions.readerNotes,
+    readerNotesAIGenerated: readerOpinions.isAIGenerated,
     ...summary,
   };
 }
