@@ -31,6 +31,7 @@ Main features include:
 - MongoDB connection string
 - Cloudinary credentials for media uploads
 - Gemini API key for AI features
+- Redis is optional; when unavailable, AI jobs run inline instead of through a background worker
 
 ## Setup
 
@@ -71,7 +72,10 @@ GEMINI_API_KEY=your_gemini_api_key
 CLOUDINARY_CLOUD_NAME=your_cloudinary_name
 CLOUDINARY_API_KEY=your_cloudinary_key
 CLOUDINARY_API_SECRET=your_cloudinary_secret
+REDIS_URL=redis://127.0.0.1:6379
 ```
+
+If you do not want to run Redis locally, you can omit `REDIS_URL`. The server will still start and AI study jobs will execute inline.
 
 ### 3. Run the apps
 

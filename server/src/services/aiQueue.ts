@@ -7,9 +7,58 @@ import { Types } from "mongoose";
 const connection = redisConfigFromEnv();
 export const aiQueue = connection ? new Queue("ai-jobs", { connection }) : null;
 
+type AIJobType = "summary" | "mcq" | "keypoints" | "flashcards";
+
+async function persistAIResult(
+  bookId: string,
+  type: AIJobType,
+  data: unknown,
+) {
+  await AIStudyCache.findOneAndUpdate(
+    { bookId: new Types.ObjectId(bookId), type },
+    {
+      $set: {
+        data,
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+      },
+    },
+    { upsert: true },
+  );
+}
+
+async function runAIJob(bookId: string, type: AIJobType, opts: any = {}) {
+  if (type === "summary") {
+    const summary = await generateBookSummary({ _id: bookId } as any);
+    await persistAIResult(bookId, type, summary);
+    return summary;
+  }
+
+  if (type === "mcq") {
+    const questions = await generateMCQQuestions({ _id: bookId } as any, opts?.count || 10);
+    await persistAIResult(bookId, type, questions);
+    return questions;
+  }
+
+  if (type === "keypoints") {
+    const keyPoints = await generateKeyPoints({ _id: bookId } as any);
+    await persistAIResult(bookId, type, keyPoints);
+    return keyPoints;
+  }
+
+  if (type === "flashcards") {
+    const cards = await generateFlashcards({ _id: bookId } as any, opts?.count || 8);
+    await persistAIResult(bookId, type, cards);
+    return cards;
+  }
+
+  throw new Error(`Unsupported AI job type: ${type}`);
+}
+
 export async function enqueueAIJob(bookId: string, type: string, opts: any = {}) {
   if (!aiQueue) {
-    throw new Error("AI job queue is disabled because Redis is not configured");
+    await runAIJob(bookId, type as AIJobType, opts);
+    return `inline-${type}-${Date.now()}`;
   }
 
   const name = type;
@@ -20,7 +69,6 @@ export async function enqueueAIJob(bookId: string, type: string, opts: any = {})
 // Worker that performs AI generation and saves results to cache
 export function initAIWorker() {
   if (!connection) {
-    console.info("[AIQueue] Redis not configured; AI worker disabled");
     return null;
   }
 
@@ -31,22 +79,7 @@ export function initAIWorker() {
       const { bookId, opts } = job.data as any;
       const type = job.name;
       try {
-        if (type === "summary") {
-          const summary = await generateBookSummary({ _id: bookId } as any);
-          await AIStudyCache.findOneAndUpdate({ bookId: new Types.ObjectId(bookId), type }, { $set: { data: summary, createdAt: new Date(), expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000) } }, { upsert: true });
-        }
-        if (type === "mcq") {
-          const questions = await generateMCQQuestions({ _id: bookId } as any, opts?.count || 10);
-          await AIStudyCache.findOneAndUpdate({ bookId: new Types.ObjectId(bookId), type }, { $set: { data: questions, createdAt: new Date(), expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000) } }, { upsert: true });
-        }
-        if (type === "keypoints") {
-          const keyPoints = await generateKeyPoints({ _id: bookId } as any);
-          await AIStudyCache.findOneAndUpdate({ bookId: new Types.ObjectId(bookId), type }, { $set: { data: keyPoints, createdAt: new Date(), expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000) } }, { upsert: true });
-        }
-        if (type === "flashcards") {
-          const cards = await generateFlashcards({ _id: bookId } as any, opts?.count || 8);
-          await AIStudyCache.findOneAndUpdate({ bookId: new Types.ObjectId(bookId), type }, { $set: { data: cards, createdAt: new Date(), expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000) } }, { upsert: true });
-        }
+        await runAIJob(bookId, type as AIJobType, opts);
       } catch (err: any) {
         console.error(`[AIQueue] Job ${job.id} (${type}) failed:`, err?.message || err);
         throw err;

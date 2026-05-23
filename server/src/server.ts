@@ -25,7 +25,7 @@ const startServer = async () => {
   });
 
   startRecommendationCron();
-  // Initialize AI background worker (requires Redis configured via REDIS_URL)
+  // Initialize the AI worker when Redis is available; otherwise jobs run inline.
   try {
     initAIWorker();
   } catch (err) {
