@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { Types } from "mongoose";
+import axios from "axios";
 import { ApiError } from "../utils/ApiError";
 import { asyncHandler } from "../utils/asyncHandler";
 import {
@@ -150,6 +151,53 @@ export const downloadBook = asyncHandler(
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error(`[BookController] Download error:`, message);
       throw error;
+    }
+  },
+);
+
+export const streamBookPdf = asyncHandler(
+  async (req: Request, res: Response) => {
+    const id = getParamValue(req.params.id);
+    if (!id || !isValidId(id)) {
+      throw new ApiError(400, "Invalid book ID");
+    }
+
+    if (!req.user) {
+      throw new ApiError(401, "Authentication required");
+    }
+
+    const data = await downloadBookService(id, req.user);
+
+    if (!data.downloadUrl) {
+      throw new ApiError(404, "PDF not available for this book");
+    }
+
+    try {
+      const pdfResponse = await axios.get(data.downloadUrl, {
+        responseType: "arraybuffer",
+        timeout: 30000,
+        headers: {
+          "User-Agent": "eLibrary-Server/1.0",
+        },
+      });
+
+      const rawContentType = pdfResponse.headers["content-type"];
+      const contentType =
+        typeof rawContentType === "string"
+          ? rawContentType
+          : "application/pdf";
+
+      res.setHeader("Content-Type", contentType);
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="${data.fileName || `book-${id}.pdf`}"`,
+      );
+      res.setHeader("Cache-Control", "no-store, private");
+      res.status(200).send(Buffer.from(pdfResponse.data));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[BookController] PDF stream error for ${id}:`, message);
+      throw new ApiError(502, "Failed to load PDF for reading");
     }
   },
 );

@@ -12,6 +12,7 @@ import {
 import { useAuthStore } from "../../../../../store/authStore";
 import { Spinner } from "../../../../../components/ui/Spinner";
 import AIStudyPanel from "../../../../../components/reader/AIStudyPanel";
+import { getApiBaseUrl } from "../../../../../lib/apiBaseUrl";
 import { getApiErrorMessage } from "../../../../../lib/getApiErrorMessage";
 
 function isRenderingCancelled(error: unknown): boolean {
@@ -81,6 +82,52 @@ export default function ReadPage() {
 
     const loadPDF = async () => {
       try {
+        const { getPdfjsLib } = await import("../../../../../lib/pdfWorker");
+        const lib = await getPdfjsLib();
+
+        const apiBaseUrl = getApiBaseUrl();
+        const token = useAuthStore.getState().accessToken;
+
+        const streamResponse = await fetch(
+          `${apiBaseUrl}/api/books/${id}/pdf`,
+          {
+            method: "GET",
+            credentials: "include",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          },
+        );
+
+        if (streamResponse.ok) {
+          const pdfBytes = new Uint8Array(await streamResponse.arrayBuffer());
+          const loadingTask = lib.getDocument({ data: pdfBytes });
+          const doc = await loadingTask.promise;
+
+          if (!isActive) {
+            await doc.destroy();
+            return;
+          }
+
+          setPdfDoc(doc);
+          setTotalPages(doc.numPages);
+
+          const savedProgress = savedProgressRef.current;
+          if (savedProgress > 0 && savedProgress < 100) {
+            const savedPage = Math.ceil((savedProgress / 100) * doc.numPages)
+            setCurrentPage(savedPage)
+            setPageInputValue(String(savedPage))
+          } else {
+            setCurrentPage(1)
+            setPageInputValue("1")
+          }
+
+          return;
+        }
+
+        console.warn(
+          "[PDF] Streaming endpoint failed, falling back to direct download URL:",
+          streamResponse.status,
+        );
+
         let downloadUrl = "";
 
         try {
@@ -98,14 +145,7 @@ export default function ReadPage() {
           throw new Error("Failed to get download URL");
         }
 
-        const { getPdfjsLib } = await import("../../../../../lib/pdfWorker");
-        const lib = await getPdfjsLib();
-
-        const loadingTask = lib.getDocument({
-          url: downloadUrl,
-          cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${lib.version}/cmaps/`,
-          cMapPacked: true,
-        });
+        const loadingTask = lib.getDocument({ url: downloadUrl });
 
         const doc = await loadingTask.promise;
         if (!isActive) {

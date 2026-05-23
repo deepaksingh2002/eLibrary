@@ -3,6 +3,10 @@ import type * as PdfjsLib from "pdfjs-dist";
 
 let pdfjsLib: typeof PdfjsLib | null = null;
 
+function getLocalWorkerSrc(): string {
+  return new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+}
+
 export async function getPdfjsLib(): Promise<typeof PdfjsLib> {
   if (pdfjsLib) return pdfjsLib;
 
@@ -10,7 +14,7 @@ export async function getPdfjsLib(): Promise<typeof PdfjsLib> {
   pdfjsLib = lib;
 
   if (typeof window !== "undefined") {
-    lib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${lib.version}/build/pdf.worker.min.mjs`;
+    lib.GlobalWorkerOptions.workerSrc = getLocalWorkerSrc();
   }
 
   return lib;

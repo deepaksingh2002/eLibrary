@@ -9,6 +9,7 @@ import {
   getBookById,
   permanentDeleteBook,
   resolveBookPdf,
+  streamBookPdf,
   searchBooks,
   summarizeBook,
   toggleBookStatus,
@@ -27,6 +28,7 @@ router.get("/:id", optionalAuth, getBookById);
 
 router.get("/:id/summary", protect, summarizeBook);
 router.post("/:id/download", protect, downloadBook);
+router.get("/:id/pdf", protect, streamBookPdf);
 
 router.post("/", protect, requireRole("admin"), uploadBookFiles, createBook);
 router.patch(
