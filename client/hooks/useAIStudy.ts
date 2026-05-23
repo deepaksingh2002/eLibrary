@@ -1,7 +1,7 @@
 "use client"
 import { useState } from "react"
 import { useAuthStore } from "../store/authStore"
-import { useGetAiStudySummaryQuery, useGetAiStudyMcqQuery, useGetAiStudyKeyPointsQuery, useGetAiStudyFlashcardsQuery } from "../store/services/api"
+import { useGetAiStudySummaryQuery, useGetAiStudyMcqQuery, useGetAiStudyKeyPointsQuery, useGetAiStudyFlashcardsQuery, useGetAiStudyStatusQuery } from "../store/services/api"
 
 export type AIStudyTab = "flashcards" | "summary" | "mcq" | "keypoints"
 
@@ -99,7 +99,7 @@ export function useAIStudy(bookId: string) {
       data: summaryQuery.data?.summary || null,
       isLoading: summaryQuery.isLoading || summaryQuery.isFetching,
       cached: summaryQuery.data?.cached || false,
-      basedOnPDF: summaryQuery.data?.basedOnPDF || false,
+      basedOnPDF: summaryQuery.data?.basedOnPDF || summaryQuery.data?.summary?.basedOnPDF || false,
     },
     mcq: {
       questions: (mcqQuery.data?.questions || []) as MCQQuestion[],

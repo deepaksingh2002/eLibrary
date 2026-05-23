@@ -198,6 +198,7 @@ interface StudySummary {
   targetReader: string;
   difficulty: "Beginner" | "Intermediate" | "Advanced";
   estimatedTime: string;
+  basedOnPDF: boolean;
 }
 
 interface AiStudySummaryResponse {
