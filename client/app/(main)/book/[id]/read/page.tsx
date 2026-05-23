@@ -42,13 +42,14 @@ export default function ReadPage() {
   const renderTaskRef = useRef<RenderTask | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedProgressRef = useRef(0);
+  const returnUrl = `/book/${id}/read`;
 
   // Redirect if not authenticated
   useEffect(() => {
     if (hasHydrated && !isAuthenticated) {
-      router.push(`/login?returnUrl=/book/${id}/read`);
+      router.push(`/login?returnUrl=${encodeURIComponent(returnUrl)}`);
     }
-  }, [hasHydrated, isAuthenticated, id, router]);
+  }, [hasHydrated, isAuthenticated, id, router, returnUrl]);
 
   // Auto-dismiss keyboard hint
   useEffect(() => {
@@ -297,7 +298,16 @@ export default function ReadPage() {
     );
   }
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-900">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Spinner size="lg" />
+          <p className="text-sm text-gray-300">Redirecting to sign in...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col" style={{ height: "100vh", backgroundColor: "#111827" }}>

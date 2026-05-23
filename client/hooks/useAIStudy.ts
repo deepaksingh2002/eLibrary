@@ -55,29 +55,30 @@ function normalizeKeyPointsData(data: Partial<KeyPointsData> | null | undefined)
 export function useAIStudy(bookId: string) {
   const [activeTab, setActiveTab] = useState<AIStudyTab>("summary")
   const [isOpen, setIsOpen] = useState(false)
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   // Use RTK Query hooks to keep shapes consistent with the server
   const summaryQuery = useGetAiStudySummaryQuery(bookId, {
-    skip: !(isOpen && activeTab === "summary" && !!bookId && useAuthStore.getState().isAuthenticated),
+    skip: !(isOpen && activeTab === "summary" && !!bookId && isAuthenticated),
     refetchOnMountOrArgChange: false,
   })
 
   const mcqQuery = useGetAiStudyMcqQuery(bookId, {
-    skip: !(isOpen && activeTab === "mcq" && !!bookId && useAuthStore.getState().isAuthenticated),
+    skip: !(isOpen && activeTab === "mcq" && !!bookId && isAuthenticated),
     refetchOnMountOrArgChange: false,
   })
 
   const keyPointsQuery = useGetAiStudyKeyPointsQuery(bookId, {
-    skip: !(isOpen && activeTab === "keypoints" && !!bookId && useAuthStore.getState().isAuthenticated),
+    skip: !(isOpen && activeTab === "keypoints" && !!bookId && isAuthenticated),
     refetchOnMountOrArgChange: false,
   })
   const flashcardsQuery = useGetAiStudyFlashcardsQuery(bookId, {
-    skip: !(isOpen && activeTab === "flashcards" && !!bookId && useAuthStore.getState().isAuthenticated),
+    skip: !(isOpen && activeTab === "flashcards" && !!bookId && isAuthenticated),
     refetchOnMountOrArgChange: false,
   })
   
   // Status fetch to show PDF readiness and errors
   const statusQuery = useGetAiStudyStatusQuery(bookId, {
-    skip: !(isOpen && !!bookId && useAuthStore.getState().isAuthenticated),
+    skip: !(isOpen && !!bookId && isAuthenticated),
     refetchOnMountOrArgChange: false,
   })
 

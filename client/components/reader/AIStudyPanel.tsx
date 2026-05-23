@@ -1,5 +1,7 @@
 "use client"
 import React, { useEffect, useRef } from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useAIStudy, AIStudyTab } from "../../hooks/useAIStudy"
 import { useAuthStore } from "../../store/authStore"
 import BookSummary from "./BookSummary"
@@ -15,6 +17,8 @@ interface Props {
 export default function AIStudyPanel({ bookId, bookTitle }: Props) {
   const { isOpen, activeTab, setActiveTab, openPanel, closePanel, summary, mcq, keyPoints, flashcards, refetch, status } = useAIStudy(bookId)
   const { user, isAuthenticated } = useAuthStore()
+  const pathname = usePathname()
+  const signInHref = `/login?returnUrl=${encodeURIComponent(pathname || "/")}`
 
   const tabs: { key: AIStudyTab; icon: string; label: string }[] = [
     { key: "flashcards", icon: "🃏", label: "Flashcards" },
@@ -132,7 +136,9 @@ export default function AIStudyPanel({ bookId, bookTitle }: Props) {
               <div className="mb-3 text-sm font-semibold">Sign in to use AI Study</div>
               <p className="text-xs text-slate-500 dark:text-slate-400">AI features require authentication. Please log in to generate summaries, quizzes, and flashcards from PDFs.</p>
               <div className="mt-4">
-                <a href="/auth/login" className="rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Sign in</a>
+                <Link href={signInHref} className="rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white">
+                  Sign in
+                </Link>
               </div>
             </div>
           )}

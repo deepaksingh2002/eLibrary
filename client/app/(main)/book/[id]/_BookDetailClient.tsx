@@ -37,6 +37,7 @@ export default function BookDetailClient() {
   const router = useRouter();
   const id = params.id as string;
   const { isAuthenticated, user } = useAuthStore();
+  const returnUrl = `/book/${id}`;
   const [reviewsPage, setReviewsPage] = React.useState(1);
   const [reviewsSort, setReviewsSort] = React.useState("helpful");
   const [isHydrated, setIsHydrated] = React.useState(false);
@@ -90,7 +91,7 @@ export default function BookDetailClient() {
 
   const handleDownload = () => {
     if (!isAuthenticated) {
-      router.push("/login");
+      router.push(`/login?returnUrl=${encodeURIComponent(returnUrl)}`);
       return;
     }
     downloadBook(id)
@@ -258,10 +259,10 @@ export default function BookDetailClient() {
               </>
             ) : (
               <>
-                <Button size="lg" variant="ghost" className="w-full font-medium sm:w-auto" onClick={() => router.push("/login")}>
+                <Button size="lg" variant="ghost" className="w-full font-medium sm:w-auto" onClick={() => router.push(`/login?returnUrl=${encodeURIComponent(returnUrl)}`)}>
                   Log in to Download
                 </Button>
-                <Button size="lg" variant="ghost" className="w-full font-medium sm:w-auto opacity-60 cursor-not-allowed" disabled>
+                <Button size="lg" variant="ghost" className="w-full font-medium sm:w-auto" onClick={() => router.push(`/login?returnUrl=${encodeURIComponent(returnUrl)}`)}>
                   Log in to read
                 </Button>
               </>
