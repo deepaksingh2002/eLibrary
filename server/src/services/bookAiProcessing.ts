@@ -1,12 +1,11 @@
 import Book from "../models/Book";
-import { reUploadFromURL } from "./geminiPDFService";
 
 export async function processBookAiFromPdfUrl(params: {
   bookId: string;
   pdfUrl: string;
   title: string;
 }) {
-  const { bookId, pdfUrl, title } = params;
+  const { bookId, pdfUrl } = params;
 
   if (!pdfUrl) {
     await Book.findByIdAndUpdate(bookId, {
@@ -17,30 +16,12 @@ export async function processBookAiFromPdfUrl(params: {
   }
 
   await Book.findByIdAndUpdate(bookId, {
-    extractionStatus: "uploading",
+    extractionStatus: "ready",
     extractionError: "",
+    extractedAt: new Date(),
   });
 
-  const result = await reUploadFromURL(pdfUrl, `${title}.pdf`);
-
-  if (result.success) {
-    await Book.findByIdAndUpdate(bookId, {
-      geminiFileUri: result.fileUri,
-      geminiMimeType: result.mimeType,
-      extractionStatus: "ready",
-      extractedAt: new Date(),
-      extractionError: "",
-    });
-
-    return { success: true, fileUri: result.fileUri };
-  }
-
-  await Book.findByIdAndUpdate(bookId, {
-    extractionStatus: "failed",
-    extractionError: result.error || "Upload failed",
-  });
-
-  return { success: false, error: result.error || "Upload failed" };
+  return { success: true, ready: true };
 }
 
 export function scheduleBookAiProcessing(params: {

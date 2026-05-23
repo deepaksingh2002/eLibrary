@@ -28,7 +28,7 @@ export async function explainRecommendation(params: {
   userName?: string;
 }): Promise<string> {
   if (!process.env.GEMINI_API_KEY) {
-    console.warn("[Gemini] GEMINI_API_KEY not set - using fallback");
+    console.warn("[AI] GEMINI_API_KEY not set - using fallback");
     return FALLBACK_EXPLANATION;
   }
 
@@ -64,14 +64,14 @@ Do not use any markdown formatting.`;
     const text = result.response.text().trim();
 
     if (!text || text.length < 10) {
-      console.warn("[Gemini] Empty response - using fallback");
+      console.warn("[AI] Empty response - using fallback");
       return FALLBACK_EXPLANATION;
     }
 
     return text;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("[Gemini] explainRecommendation failed:", message);
+    console.error("[AI] explainRecommendation failed:", message);
     return FALLBACK_EXPLANATION;
   }
 }
@@ -134,7 +134,7 @@ export async function summarizePdfBook(params: {
     const pdfResponse = await fetch(params.pdfUrl);
     if (!pdfResponse.ok) {
       console.error(
-        "[Gemini] PDF fetch failed:",
+        "[AI] PDF fetch failed:",
         pdfResponse.status,
         pdfResponse.statusText,
       );
@@ -146,14 +146,14 @@ export async function summarizePdfBook(params: {
     );
     if (contentLength > MAX_INLINE_PDF_BYTES) {
       console.warn(
-        "[Gemini] PDF too large for inline summary - using fallback",
+        "[AI] PDF too large for inline summary - using fallback",
       );
       return fallback;
     }
 
     const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
     if (pdfBuffer.byteLength > MAX_INLINE_PDF_BYTES) {
-      console.warn("[Gemini] PDF too large after download - using fallback");
+      console.warn("[AI] PDF too large after download - using fallback");
       return fallback;
     }
 
@@ -218,7 +218,7 @@ Do not use markdown fences.`;
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("[Gemini] summarizePdfBook failed:", message);
+    console.error("[AI] summarizePdfBook failed:", message);
     return fallback;
   }
 }

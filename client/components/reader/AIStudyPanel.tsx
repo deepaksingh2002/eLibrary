@@ -118,10 +118,10 @@ export default function AIStudyPanel({ bookId, bookTitle }: Props) {
         <div className="flex-shrink-0 border-b border-slate-200 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-900/60">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20">
-              ✅ Gemini PDF mode
+              ✅ LangChain PDF mode
             </span>
             <span className="text-slate-600 dark:text-slate-300">
-              Reads the uploaded PDF directly for more accurate results.
+              Reads the uploaded PDF and generates study content directly from it.
             </span>
           </div>
         </div>
@@ -229,7 +229,7 @@ export default function AIStudyPanel({ bookId, bookTitle }: Props) {
 
         <div className="flex-shrink-0 border-t border-slate-200 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-950">
           <div className="flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-            <span>Powered by Google Gemini AI</span>
+            <span>Powered by LangChain AI</span>
             <span>Cached for 48 hours</span>
           </div>
         </div>

@@ -403,7 +403,7 @@ router.get(
         .skip(skip)
         .limit(limit)
         .select(
-          "title author genre description coverUrl pdfUrl geminiFileUri status downloads avgRating totalReviews extractionStatus extractionPages createdAt updatedAt",
+          "title author genre description coverUrl pdfUrl status downloads avgRating totalReviews extractionStatus extractionPages createdAt updatedAt",
         )
         .populate("uploadedBy", "name email"),
       Book.countDocuments(filter),
@@ -415,7 +415,6 @@ router.get(
         ...plainBook,
         extractionStatus: normalizeExtractionStatus(plainBook as {
           extractionStatus?: string;
-          geminiFileUri?: string;
           pdfUrl?: string;
         }),
       };

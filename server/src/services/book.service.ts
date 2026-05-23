@@ -46,8 +46,6 @@ const AI_BOOK_FIELDS = [
   "extractionStatus",
   "extractionPages",
   "extractionError",
-  "geminiFileUri",
-  "geminiMimeType",
   "extractedAt",
 ] as const;
 
@@ -193,7 +191,6 @@ export async function listBooks(query: BookListQuery, user?: AuthUser) {
     ...book,
     extractionStatus: normalizeExtractionStatus(book as {
       extractionStatus?: string;
-      geminiFileUri?: string;
       pdfUrl?: string;
     }),
   }));
@@ -311,7 +308,7 @@ export async function getBookById(id: string, user?: AuthUser) {
   let query: any = Book.findOne(filter);
   if (user?.role === "admin") {
     query = query.select(
-      "title author description genre language tags coverUrl coverPublicId pdfUrl pdfPublicId status downloads avgRating totalReviews isbn publishedYear publisher pageCount importSource externalId uploadedBy isDeleted createdAt updatedAt extractionStatus extractionPages extractionError extractedAt geminiFileUri geminiMimeType",
+      "title author description genre language tags coverUrl coverPublicId pdfUrl pdfPublicId status downloads avgRating totalReviews isbn publishedYear publisher pageCount importSource externalId uploadedBy isDeleted createdAt updatedAt extractionStatus extractionPages extractionError extractedAt",
     );
   }
 
@@ -325,7 +322,6 @@ export async function getBookById(id: string, user?: AuthUser) {
     ...book,
     extractionStatus: normalizeExtractionStatus(book as {
       extractionStatus?: string;
-      geminiFileUri?: string;
       pdfUrl?: string;
     }),
   };
@@ -378,11 +374,7 @@ export async function createBook(
       resourceType: "raw",
     });
 
-    // ── Upload to Gemini File API in background ────────────
-    // This runs after the book is created so it does not
-    // block the admin's upload response.
-    // Status starts as "pending" and updates to "ready" when done.
-    // ──────────────────────────────────────────────────────
+    // AI study generation reads the uploaded PDF directly via LangChain.
 
     let coverUrl = "";
     let coverPublicId = "";
@@ -408,7 +400,7 @@ export async function createBook(
       coverPublicId,
       pdfUrl: pdfResult.pdfUrl,
       pdfPublicId: pdfResult.pdfPublicId,
-      extractionStatus: "pending",
+      extractionStatus: "ready",
       extractionPages: 0,
       extractionError: "",
       extractedAt: new Date(),
@@ -420,55 +412,6 @@ export async function createBook(
       pdfUrl: book.pdfUrl,
       pdfPublicId: book.pdfPublicId,
     });
-
-    // Background: upload to Gemini File API
-    const bookIdStr = book._id.toString();
-    const bookTitle = book.title;
-    const pdfBuffer = (files as any)?.pdf?.[0]?.buffer;
-
-    if (pdfBuffer) {
-      setImmediate(async () => {
-        try {
-          console.log("[Book] Starting Gemini PDF upload for:", bookTitle);
-
-          // Update status to uploading
-          await Book.findByIdAndUpdate(bookIdStr, {
-            extractionStatus: "uploading",
-          });
-
-          const { uploadPDFToGemini } =
-            await import("../services/geminiPDFService");
-
-          const result = await uploadPDFToGemini(pdfBuffer, `${bookTitle}.pdf`);
-
-          if (result.success) {
-            await Book.findByIdAndUpdate(bookIdStr, {
-              geminiFileUri: result.fileUri,
-              geminiMimeType: result.mimeType,
-              extractionStatus: "ready",
-              extractedAt: new Date(),
-            });
-            console.log("[Book] Gemini PDF ready for:", bookTitle);
-          } else {
-            await Book.findByIdAndUpdate(bookIdStr, {
-              extractionStatus: "failed",
-              extractionError: result.error || "Upload failed",
-            });
-            console.error(
-              "[Book] Gemini upload failed for:",
-              bookTitle,
-              result.error,
-            );
-          }
-        } catch (err: any) {
-          await Book.findByIdAndUpdate(bookIdStr, {
-            extractionStatus: "failed",
-            extractionError: err.message,
-          });
-          console.error("[Book] Background upload error:", err.message);
-        }
-      });
-    }
 
     return {
       message: "Book created successfully",
@@ -566,10 +509,10 @@ export async function updateBook(
       previousPdfPublicId = book.pdfPublicId;
       book.pdfUrl = pdfResult.pdfUrl;
       book.pdfPublicId = pdfResult.pdfPublicId;
-      book.extractionStatus = "pending";
+      book.extractionStatus = "ready";
       book.extractionPages = 0;
       book.extractionError = "";
-      book.extractedAt = undefined;
+      book.extractedAt = new Date();
     }
 
     await book.save();
@@ -582,42 +525,6 @@ export async function updateBook(
         ? deleteFromCloudinary(previousPdfPublicId, "raw")
         : Promise.resolve(),
     ]);
-
-    // Re-upload new PDF to Gemini in background
-    const newPdfBuffer = (files as any)?.pdf?.[0]?.buffer;
-    const bookIdStr2 = id;
-
-    if (newPdfBuffer) {
-      setImmediate(async () => {
-        try {
-          await Book.findByIdAndUpdate(bookIdStr2, {
-            geminiFileUri: "",
-            extractionStatus: "uploading",
-          });
-
-          const { uploadPDFToGemini: reUpload } =
-            await import("../services/geminiPDFService");
-
-          const result = await reUpload(newPdfBuffer, `${book.title}.pdf`);
-
-          if (result.success) {
-            await Book.findByIdAndUpdate(bookIdStr2, {
-              geminiFileUri: result.fileUri,
-              geminiMimeType: result.mimeType,
-              extractionStatus: "ready",
-              extractedAt: new Date(),
-            });
-          } else {
-            await Book.findByIdAndUpdate(bookIdStr2, {
-              extractionStatus: "failed",
-              extractionError: result.error || "",
-            });
-          }
-        } catch (err: any) {
-          console.error("[Book] Re-upload error:", err.message);
-        }
-      });
-    }
 
     return {
       message: "Book updated successfully",
@@ -869,7 +776,7 @@ export async function summarizeBook(id: string) {
   return {
     bookId: book._id,
     title: book.title,
-    provider: "gemini",
+    provider: "ai",
     ...summary,
   };
 }

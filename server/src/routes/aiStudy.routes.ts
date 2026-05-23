@@ -11,7 +11,6 @@ import {
   generateKeyPoints,
   generateFlashcards,
 } from "../services/aiStudyService";
-import { isFileURIValid } from "../services/geminiPDFService";
 import { normalizeExtractionStatus } from "../utils/bookAiStatus";
 
 const router = Router();
@@ -29,7 +28,7 @@ async function getBook(bookId: string) {
   })
     .select(
       "title author genre description tags " +
-        "pdfUrl geminiFileUri geminiMimeType " +
+        "pdfUrl " +
         "extractionStatus extractionError",
     )
     .lean();
@@ -132,7 +131,7 @@ router.get(
 
     const book = await Book.findById(bookId)
       .select(
-        "title pdfUrl extractionStatus extractionError " + "geminiFileUri extractedAt",
+        "title pdfUrl extractionStatus extractionError extractedAt",
       )
       .lean();
 
@@ -140,7 +139,6 @@ router.get(
 
     const extractionStatus = normalizeExtractionStatus(book as {
       extractionStatus?: string;
-      geminiFileUri?: string;
       pdfUrl?: string;
     });
 
@@ -148,7 +146,7 @@ router.get(
       title: (book as any).title,
       extractionStatus,
       isReady: extractionStatus === "ready",
-      hasFileUri: !!(book as any).geminiFileUri,
+      hasPdf: !!(book as any).pdfUrl,
       error: (book as any).extractionError || null,
       extractedAt: (book as any).extractedAt || null,
     });
@@ -304,77 +302,8 @@ router.delete(
 );
 
 // ─────────────────────────────────────────────────────────
-// POST /api/ai-study/:bookId/upload-to-gemini  (Admin only)
-// Manually trigger Gemini upload for old books
-// ─────────────────────────────────────────────────────────
-router.post(
-  "/:bookId/upload-to-gemini",
-  asyncHandler(async (req, res) => {
-    if (req.user!.role !== "admin") {
-      throw new ApiError(403, "Admin only");
-    }
-
-    const bookId = getParamValue(req.params.bookId);
-    if (!bookId || !Types.ObjectId.isValid(bookId)) {
-      throw new ApiError(400, "Invalid book ID");
-    }
-
-    const book = await Book.findById(bookId).select("title pdfUrl").lean();
-
-    if (!book) throw new ApiError(404, "Book not found");
-    if (!(book as any).pdfUrl) {
-      throw new ApiError(400, "No PDF URL for this book");
-    }
-
-    // Update status
-    await Book.findByIdAndUpdate(bookId, {
-      extractionStatus: "uploading",
-      extractionError: "",
-    });
-
-    // Upload to Gemini
-    const { reUploadFromURL } = await import("../services/geminiPDFService");
-
-    const result = await reUploadFromURL(
-      (book as any).pdfUrl,
-      `${(book as any).title}.pdf`,
-    );
-
-    if (result.success) {
-      await Book.findByIdAndUpdate(bookId, {
-        geminiFileUri: result.fileUri,
-        geminiMimeType: result.mimeType,
-        extractionStatus: "ready",
-        extractedAt: new Date(),
-      });
-
-      // Clear old cache so next request uses new file
-      await AIStudyCache.deleteMany({
-        bookId: new Types.ObjectId(bookId),
-      });
-
-      return res.json({
-        message: "PDF uploaded to Gemini successfully. AI features are ready.",
-        fileUri: result.fileUri,
-        success: true,
-      });
-    }
-
-    await Book.findByIdAndUpdate(bookId, {
-      extractionStatus: "failed",
-      extractionError: result.error || "Upload failed",
-    });
-
-    res.status(500).json({
-      message: result.error || "Upload failed",
-      success: false,
-    });
-  }),
-);
-
-// ─────────────────────────────────────────────────────────
 // GET /api/ai-study/:bookId/debug  (Admin only)
-// Return book PDF/Gemini fields and file validity for debugging
+// Return book PDF/status fields for debugging
 // ─────────────────────────────────────────────────────────
 router.get(
   "/:bookId/debug",
@@ -390,19 +319,15 @@ router.get(
 
     const book = await Book.findById(bookId)
       .select(
-        "title author pdfUrl geminiFileUri geminiMimeType extractionStatus extractionError extractedAt",
+        "title author pdfUrl extractionStatus extractionError extractedAt",
       )
       .lean();
 
     if (!book) throw new ApiError(404, "Book not found");
 
-    const isValid = (book as any).geminiFileUri
-      ? await isFileURIValid((book as any).geminiFileUri)
-      : false;
-
     res.json({
       book,
-      isFileUriValid: isValid,
+      isPdfAvailable: !!(book as any).pdfUrl,
     });
   }),
 );

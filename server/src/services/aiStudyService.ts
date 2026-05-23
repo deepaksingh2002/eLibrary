@@ -1,4 +1,4 @@
-import { generateFromPDF, getValidFileURI } from "./geminiPDFService";
+import { generateFromPdfWithLangChain } from "./langchainPdfService";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -48,8 +48,6 @@ export interface BookForAI {
   description: string;
   tags: string[];
   pdfUrl: string;
-  geminiFileUri: string;
-  geminiMimeType: string;
   extractionStatus: string;
 }
 
@@ -84,29 +82,15 @@ const FALLBACK_KEY_POINTS: KeyPoints = {
 
 // ─────────────────────────────────────────────────────────
 // GENERATE BOOK SUMMARY
-// Gemini reads the actual PDF and summarizes it
+// AI pipeline reads the actual PDF and summarizes it
 // ─────────────────────────────────────────────────────────
 export async function generateBookSummary(
   book: BookForAI,
 ): Promise<BookSummary> {
-  if (!process.env.GEMINI_API_KEY) {
-    return { ...FALLBACK_SUMMARY, overview: "GEMINI_API_KEY not configured" };
-  }
-
-  // Get a valid Gemini file URI (re-uploads if expired)
-  const fileInfo = await getValidFileURI({
-    _id: book._id,
-    title: book.title,
-    pdfUrl: book.pdfUrl,
-    geminiFileUri: book.geminiFileUri,
-    geminiMimeType: book.geminiMimeType,
-  });
-
-  if (!fileInfo.fileUri) {
+  if (!book.pdfUrl) {
     return {
       ...FALLBACK_SUMMARY,
-      overview:
-        fileInfo.error || "Could not access PDF. Please re-upload the book.",
+      overview: "No PDF is available for this book.",
     };
   }
 
@@ -131,11 +115,11 @@ Return ONLY valid JSON — no markdown, no extra text.
 Be specific to the actual PDF content.
 Do not give generic answers based on the book title.`;
 
-  const result = await generateFromPDF({
-    fileUri: fileInfo.fileUri,
-    mimeType: fileInfo.mimeType,
+  const result = await generateFromPdfWithLangChain({
+    pdfUrl: book.pdfUrl,
+    title: book.title,
     prompt,
-    maxTokens: 800,
+    maxOutputTokens: 800,
   });
 
   if (!result.success || !result.text) {
@@ -167,24 +151,14 @@ Do not give generic answers based on the book title.`;
 
 // ─────────────────────────────────────────────────────────
 // GENERATE MCQ QUESTIONS
-// Gemini reads the PDF and creates questions from it
+// AI pipeline reads the PDF and creates questions from it
 // ─────────────────────────────────────────────────────────
 export async function generateMCQQuestions(
   book: BookForAI,
   count = 10,
 ): Promise<MCQQuestion[]> {
-  if (!process.env.GEMINI_API_KEY) return [];
-
-  const fileInfo = await getValidFileURI({
-    _id: book._id,
-    title: book.title,
-    pdfUrl: book.pdfUrl,
-    geminiFileUri: book.geminiFileUri,
-    geminiMimeType: book.geminiMimeType,
-  });
-
-  if (!fileInfo.fileUri) {
-    console.error("[AIStudy] No file URI for MCQ:", fileInfo.error);
+  if (!book.pdfUrl) {
+    console.error("[AIStudy] No PDF URL for MCQ generation");
     return [];
   }
 
@@ -211,11 +185,11 @@ Return ONLY valid JSON — no markdown:
   ]
 }`;
 
-  const result = await generateFromPDF({
-    fileUri: fileInfo.fileUri,
-    mimeType: fileInfo.mimeType,
+  const result = await generateFromPdfWithLangChain({
+    pdfUrl: book.pdfUrl,
+    title: book.title,
     prompt,
-    maxTokens: 3000,
+    maxOutputTokens: 3000,
   });
 
   if (!result.success || !result.text) {
@@ -252,24 +226,14 @@ Return ONLY valid JSON — no markdown:
 
 // ─────────────────────────────────────────────────────────
 // GENERATE FLASHCARDS
-// Gemini reads the PDF and returns simple Q/A flashcards
+// AI pipeline reads the PDF and returns simple Q/A flashcards
 // ─────────────────────────────────────────────────────────
 export async function generateFlashcards(
   book: BookForAI,
   count = 8,
 ): Promise<{ question: string; answer: string }[]> {
-  if (!process.env.GEMINI_API_KEY) return [];
-
-  const fileInfo = await getValidFileURI({
-    _id: book._id,
-    title: book.title,
-    pdfUrl: book.pdfUrl,
-    geminiFileUri: book.geminiFileUri,
-    geminiMimeType: book.geminiMimeType,
-  });
-
-  if (!fileInfo.fileUri) {
-    console.error("[AIStudy] No file URI for flashcards:", fileInfo.error);
+  if (!book.pdfUrl) {
+    console.error("[AIStudy] No PDF URL for flashcards");
     return [];
   }
 
@@ -287,11 +251,11 @@ Requirements:
 - Questions and answers must come from the PDF content.
 - Keep Q/A concise (one or two sentences).`;
 
-  const result = await generateFromPDF({
-    fileUri: fileInfo.fileUri,
-    mimeType: fileInfo.mimeType,
+  const result = await generateFromPdfWithLangChain({
+    pdfUrl: book.pdfUrl,
+    title: book.title,
     prompt,
-    maxTokens: 1500,
+    maxOutputTokens: 1500,
   });
 
   if (!result.success || !result.text) {
@@ -316,18 +280,8 @@ Requirements:
 // GENERATE KEY POINTS + EXAM TIPS + INTERVIEW TOPICS
 // ─────────────────────────────────────────────────────────
 export async function generateKeyPoints(book: BookForAI): Promise<KeyPoints> {
-  if (!process.env.GEMINI_API_KEY) return FALLBACK_KEY_POINTS;
-
-  const fileInfo = await getValidFileURI({
-    _id: book._id,
-    title: book.title,
-    pdfUrl: book.pdfUrl,
-    geminiFileUri: book.geminiFileUri,
-    geminiMimeType: book.geminiMimeType,
-  });
-
-  if (!fileInfo.fileUri) {
-    console.error("[AIStudy] No file URI for key points:", fileInfo.error);
+  if (!book.pdfUrl) {
+    console.error("[AIStudy] No PDF URL for key points");
     return FALLBACK_KEY_POINTS;
   }
 
@@ -383,11 +337,11 @@ Requirements:
 - interviewTopics: conceptual understanding questions about this subject
 - ALL content must come from the actual PDF not general knowledge`;
 
-  const result = await generateFromPDF({
-    fileUri: fileInfo.fileUri,
-    mimeType: fileInfo.mimeType,
+  const result = await generateFromPdfWithLangChain({
+    pdfUrl: book.pdfUrl,
+    title: book.title,
     prompt,
-    maxTokens: 2500,
+    maxOutputTokens: 2500,
   });
 
   if (!result.success || !result.text) {

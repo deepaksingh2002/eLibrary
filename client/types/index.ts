@@ -94,8 +94,6 @@ export interface Book {
   extractionStatus?: "pending" | "uploading" | "ready" | "failed" | "no_pdf"
   extractionPages?: number
   extractionError?: string
-  geminiFileUri?: string
-  geminiMimeType?: string
   extractedAt?: string
   status: "draft" | "published"
   downloads: number

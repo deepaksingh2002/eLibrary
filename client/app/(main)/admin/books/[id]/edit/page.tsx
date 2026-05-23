@@ -11,7 +11,7 @@ import { toast } from "../../../../../../components/ui/Toast";
 import {
   useGetBookQuery,
   useUpdateBookMutation,
-  useReExtractBookAiContentMutation,
+  useClearAiStudyCacheMutation,
 } from "../../../../../../store/services/api";
 
 interface Book {
@@ -50,7 +50,7 @@ export default function EditBookPage() {
 
   const { data: bookData, isLoading, error } = useGetBookQuery(bookId);
   const [updateBook, { isLoading: isUpdatingBook }] = useUpdateBookMutation();
-  const [reExtractBookAiContent, { isLoading: isReExtracting }] = useReExtractBookAiContentMutation();
+  const [clearAiStudyCache, { isLoading: isRefreshingAi }] = useClearAiStudyCacheMutation();
 
   const [formData, setFormData] = useState<FormData>({
     title: "",
@@ -227,34 +227,34 @@ export default function EditBookPage() {
                       : "text-amber-500"
               }`}>
                 {book?.extractionStatus === "ready"
-                  ? `✅ PDF uploaded to Gemini`
+                    ? "✅ AI ready"
                   : book?.extractionStatus === "uploading"
-                    ? "⏳ Uploading PDF to Gemini"
+                      ? "⏳ Preparing AI"
                   : book?.extractionStatus === "failed"
-                    ? "❌ Gemini upload failed"
+                      ? "❌ AI preparation failed"
                     : book?.extractionStatus === "no_pdf"
                       ? "🚫 No PDF available"
-                      : "⏳ Not extracted yet"}
+                        : "⏳ Pending"}
               </p>
             </div>
             <button
               type="button"
               onClick={async () => {
                 try {
-                  const response = await reExtractBookAiContent(bookId).unwrap();
-                  toast.success(response.message || "PDF uploaded to Gemini");
+                  const response = await clearAiStudyCache(bookId).unwrap();
+                  toast.success(response.message || "AI cache refreshed");
                 } catch (err: unknown) {
                   const message =
                     typeof err === "object" && err !== null && "data" in err
-                      ? ((err as { data?: { message?: string } }).data?.message || "Upload failed")
-                      : "Re-extraction failed";
+                      ? ((err as { data?: { message?: string } }).data?.message || "Refresh failed")
+                      : "AI cache refresh failed";
                   toast.error(message);
                 }
               }}
-              disabled={isReExtracting}
+              disabled={isRefreshingAi}
               className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-purple-700 disabled:opacity-50"
             >
-              {isReExtracting ? "Uploading..." : "Upload PDF to Gemini"}
+              {isRefreshingAi ? "Refreshing..." : "Refresh AI Cache"}
             </button>
           </div>
         </div>

@@ -30,7 +30,7 @@ export default function BookSummary({
             <span className="mt-0.5 text-sm text-blue-500 animate-pulse">⏳</span>
             <div>
               <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                Reading the PDF with Gemini
+                Reading the PDF with LangChain
               </p>
               <p className="mt-1 text-xs leading-relaxed text-blue-700 dark:text-blue-200/80">
                 The assistant is analyzing the uploaded PDF directly. Large books may take a moment.

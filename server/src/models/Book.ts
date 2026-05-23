@@ -21,8 +21,6 @@ export interface IBook extends Document {
   extractionStatus: BookExtractionStatus;
   extractionPages: number;
   extractionError: string;
-  geminiFileUri: string;
-  geminiMimeType: string;
   extractedAt?: Date;
   status: "draft" | "published";
   downloads: number;
@@ -70,14 +68,6 @@ const bookSchema = new Schema<IBook>(
     extractionError: {
       type: String,
       default: "",
-    },
-    geminiFileUri: {
-      type: String,
-      default: "",
-    },
-    geminiMimeType: {
-      type: String,
-      default: "application/pdf",
     },
     extractedAt: {
       type: Date,

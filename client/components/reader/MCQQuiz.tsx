@@ -82,7 +82,7 @@ export default function MCQQuiz({ questions, isLoading }: Props) {
           </div>
           <div className="rounded-2xl bg-blue-50 px-3 py-2 text-right text-xs dark:bg-blue-500/10">
             <div className="font-semibold text-blue-700 dark:text-blue-200">{questions.length} questions</div>
-            <div className="text-blue-500 dark:text-blue-300/80">Gemini generated</div>
+            <div className="text-blue-500 dark:text-blue-300/80">LangChain generated</div>
           </div>
         </div>
       </div>

@@ -2,7 +2,6 @@ import type { BookExtractionStatus } from "../models/Book";
 
 export interface BookAiStatusSource {
   extractionStatus?: string | null;
-  geminiFileUri?: string | null;
   pdfUrl?: string | null;
 }
 
@@ -32,13 +31,9 @@ export function normalizeExtractionStatus(
     return status as BookExtractionStatus;
   }
 
-  if (book.geminiFileUri) {
+  if (book.pdfUrl) {
     return "ready";
   }
 
-  if (!book.pdfUrl) {
-    return "no_pdf";
-  }
-
-  return "pending";
+  return "no_pdf";
 }

@@ -20,7 +20,7 @@ const SMART_IMPORT_SUGGESTIONS = [
 const SMART_IMPORT_STEPS = [
   { step: "1", icon: "🔍", text: "Search any book title or author" },
   { step: "2", icon: "🌐", text: "Fetches data from Google Books + Open Library" },
-  { step: "3", icon: "✨", text: "Gemini AI enhances genre, tags and description" },
+  { step: "3", icon: "✨", text: "AI enhances genre, tags and description" },
   { step: "4", icon: "➕", text: "Click Add to Library — done!" }
 ];
 
@@ -60,7 +60,7 @@ function SmartImportContent() {
                 🔍 Smart Book Import
               </h1>
               <p className="mt-1 text-sm text-gray-500">
-                Search the internet for any book and add it to your library with one click. Metadata is automatically enhanced by Gemini AI.
+                Search the internet for any book and add it to your library with one click. Metadata is automatically enhanced by AI.
               </p>
             </div>
           </div>

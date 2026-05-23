@@ -462,8 +462,8 @@ export const api = createApi({
         return `/api/admin/books?${params.toString()}`;
       },
     }),
-    reExtractBookAiContent: builder.mutation<ApiResponse<{ message: string; success: boolean; fileUri?: string }>, string>({
-      query: (bookId) => ({ url: `/api/ai-study/${bookId}/upload-to-gemini`, method: "POST" }),
+    clearAiStudyCache: builder.mutation<ApiResponse<{ message: string }>, string>({
+      query: (bookId) => ({ url: `/api/ai-study/${bookId}/cache`, method: "DELETE" }),
       invalidatesTags: (_result, _error, bookId) => [{ type: "Book", id: bookId }, "Admin", "Books"],
     }),
     toggleBookStatus: builder.mutation<ApiResponse<MessageResponse>, string>({
@@ -618,7 +618,7 @@ export const {
   useGetFlaggedReviewsQuery,
   useModerateReviewMutation,
   useGetAdminBooksQuery,
-  useReExtractBookAiContentMutation,
+  useClearAiStudyCacheMutation,
   useToggleBookStatusMutation,
   useDeleteBookMutation,
   useBulkImportBooksMutation,

@@ -141,7 +141,7 @@ router.get(
     res.status(200).json({
       explanation,
       isAIGenerated: aiGenerated,
-      provider: "gemini",
+      provider: "ai",
     });
   }),
 );
