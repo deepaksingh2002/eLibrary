@@ -24,11 +24,36 @@ async function getCached(
   bookId: string,
   type: "summary" | "mcq" | "keypoints",
 ) {
-  return AIStudyCache.findOne({
+  const cached = await AIStudyCache.findOne({
     bookId: new Types.ObjectId(bookId),
     type,
     expiresAt: { $gt: new Date() },
   }).lean()
+
+  if (!cached) {
+    return null
+  }
+
+  if (type === "summary" && !cached.data?.basedOnPDF) {
+    return null
+  }
+
+  if (type === "mcq" && !Array.isArray(cached.data) && !Array.isArray(cached.data?.questions)) {
+    return null
+  }
+
+  if (type === "mcq") {
+    const questions = Array.isArray(cached.data) ? cached.data : cached.data?.questions
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return null
+    }
+  }
+
+  if (type === "keypoints" && !cached.data?.basedOnPDF) {
+    return null
+  }
+
+  return cached
 }
 
 async function saveCache(
@@ -214,7 +239,8 @@ router.get(
       questions,
       total: questions.length,
       cached: false,
-      basedOnPDF: true,
+      basedOnPDF: questions.length > 0,
+      error: questions.length === 0 ? "Could not generate quiz questions from the PDF content." : undefined,
     })
   }),
 )
