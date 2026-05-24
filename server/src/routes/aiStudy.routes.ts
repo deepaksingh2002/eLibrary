@@ -171,7 +171,7 @@ router.get(
     }
 
     const book = await Book.findById(bookId)
-      .select("title pdfUrl extractionStatus extractionError extractedAt")
+      .select("title pdfUrl extractionStatus extractionError extractedAt pdfTextExtracted")
       .lean()
 
     if (!book) {
@@ -181,7 +181,22 @@ router.get(
     const extractionStatus = normalizeExtractionStatus(book as {
       extractionStatus?: string
       pdfUrl?: string
+      pdfTextExtracted?: boolean
+      extractedAt?: Date | string | null
+      extractionError?: string | null
     })
+
+    if (
+      (book as any).extractionStatus === "processing" &&
+      extractionStatus === "ready" &&
+      ((book as any).pdfTextExtracted === true || !!(book as any).extractedAt)
+    ) {
+      await Book.findByIdAndUpdate(bookId, {
+        extractionStatus: "ready",
+        extractionError: "",
+        pdfTextExtracted: true,
+      })
+    }
 
     res.json({
       title: (book as any).title,

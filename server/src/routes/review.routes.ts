@@ -63,7 +63,7 @@ async function recalculateBookRating(bookId: string): Promise<void> {
         avgRating: parseFloat(result[0].avgRating.toFixed(1)),
         totalReviews: result[0].count,
       },
-      { new: true },
+      { returnDocument: "after" },
     );
     return;
   }
@@ -71,7 +71,7 @@ async function recalculateBookRating(bookId: string): Promise<void> {
   await Book.findByIdAndUpdate(
     bookId,
     { avgRating: 0, totalReviews: 0 },
-    { new: true },
+    { returnDocument: "after" },
   );
 }
 
@@ -317,7 +317,7 @@ router.post(
     const votedReview = await Review.findOneAndUpdate(
       { _id: reviewId, isRemoved: false, voters: { $ne: userId } },
       { $push: { voters: userId }, $inc: { helpfulVotes: 1 } },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (votedReview) {
@@ -330,7 +330,7 @@ router.post(
     const unvotedReview = await Review.findOneAndUpdate(
       { _id: reviewId, isRemoved: false, voters: userId },
       { $pull: { voters: userId }, $inc: { helpfulVotes: -1 } },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (unvotedReview) {

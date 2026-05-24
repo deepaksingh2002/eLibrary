@@ -1,5 +1,10 @@
 import Book from "../models/Book"
-import { generateSummary as generateSummaryFromContext, generateMCQ as generateMCQFromContext, generateKeyPoints as generateKeyPointsFromContext } from "./langchainPdfService"
+import {
+  generateSummary as generateSummaryFromContext,
+  generateMCQ as generateMCQFromContext,
+  generateKeyPoints as generateKeyPointsFromContext,
+  loadBookPDF,
+} from "./langchainPdfService"
 import { buildStudyContext, VectorStudyBook, VectorStudyTask } from "./bookVectorService"
 
 export interface BookSummary {
@@ -104,8 +109,38 @@ async function getContext(book: BookForAI, task: VectorStudyTask, limit: number)
   return buildStudyContext(resolved, task, limit)
 }
 
+async function getPdfText(book: BookForAI) {
+  const resolved = await resolveBook(book)
+
+  if (!resolved.pdfUrl) {
+    return null
+  }
+
+  const pdf = await loadBookPDF(resolved.pdfUrl, resolved.title)
+  if (!pdf.success || !pdf.text) {
+    return null
+  }
+
+  return {
+    text: pdf.text,
+    title: resolved.title,
+    author: resolved.author,
+    genre: resolved.genre,
+  }
+}
+
 export async function generateBookSummary(book: BookForAI): Promise<BookSummary> {
   try {
+    const pdf = await getPdfText(book)
+    if (pdf) {
+      return generateSummaryFromContext(
+        pdf.text,
+        pdf.title,
+        pdf.author,
+        pdf.genre,
+      )
+    }
+
     const context = await getContext(book, "summary", 10)
     if (!context.success || !context.text) {
       console.error("[AIStudy] Summary vector context failed:", context.error)
@@ -132,6 +167,11 @@ export async function generateMCQQuestions(
   count = 10,
 ): Promise<MCQQuestion[]> {
   try {
+    const pdf = await getPdfText(book)
+    if (pdf) {
+      return generateMCQFromContext(pdf.text, pdf.title, count)
+    }
+
     const context = await getContext(book, "mcq", Math.max(10, count))
     if (!context.success || !context.text) {
       console.error("[AIStudy] MCQ vector context failed:", context.error)
@@ -151,6 +191,16 @@ export async function generateMCQQuestions(
 
 export async function generateKeyPoints(book: BookForAI): Promise<KeyPoints> {
   try {
+    const pdf = await getPdfText(book)
+    if (pdf) {
+      return generateKeyPointsFromContext(
+        pdf.text,
+        pdf.title,
+        pdf.author,
+        pdf.genre,
+      )
+    }
+
     const context = await getContext(book, "keypoints", 12)
     if (!context.success || !context.text) {
       console.error("[AIStudy] Key points vector context failed:", context.error)

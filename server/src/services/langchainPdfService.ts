@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { ChatOpenAI } from "@langchain/openai";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { PromptTemplate } from "@langchain/core/prompts";
@@ -75,6 +76,292 @@ function getModel(maxTokens?: number) {
 function parseJSON(text: string): any {
   const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
   return JSON.parse(clean);
+}
+
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function shortenText(text: string, maxLength = 140): string {
+  const normalized = normalizeWhitespace(text);
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function buildTopicFromSentence(sentence: string, fallbackTopic: string): string {
+  const stopWords = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "from",
+    "into",
+    "their",
+    "there",
+    "about",
+    "which",
+    "when",
+    "where",
+    "what",
+    "were",
+    "will",
+    "would",
+    "shall",
+    "should",
+    "could",
+    "can",
+    "have",
+    "has",
+    "had",
+    "been",
+    "are",
+    "was",
+    "its",
+    "than",
+    "then",
+    "also",
+    "over",
+    "under",
+    "more",
+    "most",
+    "such",
+    "each",
+    "some",
+    "many",
+    "much",
+    "your",
+    "our",
+    "they",
+    "them",
+    "his",
+    "her",
+    "him",
+    "she",
+    "himself",
+    "herself",
+    "itself",
+    "because",
+    "through",
+    "between",
+    "within",
+    "without",
+    "during",
+    "while",
+    "these",
+    "those",
+    "chapter",
+    "section",
+    "pdf",
+    "book",
+  ]);
+
+  const words = sentence
+    .replace(/[^a-zA-Z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length > 2 && !stopWords.has(word.toLowerCase()));
+
+  if (words.length === 0) {
+    return fallbackTopic;
+  }
+
+  return words.slice(0, 4).join(" ");
+}
+
+function extractFallbackFacts(pdfText: string, bookTitle: string): Array<{ topic: string; fact: string }> {
+  const blocks = pdfText
+    .split(/\n{2,}/)
+    .map((block) => normalizeWhitespace(block))
+    .filter((block) => block.length > 0)
+    .flatMap((block) => block.split(/(?<=[.!?])\s+/g))
+    .map((sentence) => normalizeWhitespace(sentence))
+    .filter((sentence) => sentence.length >= 60 && sentence.length <= 220)
+    .filter((sentence) => /[a-zA-Z]/.test(sentence));
+
+  const uniqueFacts = new Map<string, { topic: string; fact: string }>();
+
+  for (const sentence of blocks) {
+    const fact = shortenText(sentence, 150);
+    if (uniqueFacts.has(fact)) {
+      continue;
+    }
+
+    uniqueFacts.set(fact, {
+      topic: buildTopicFromSentence(sentence, bookTitle || "the PDF"),
+      fact,
+    });
+  }
+
+  return Array.from(uniqueFacts.values());
+}
+
+function deterministicIndex(seed: string, length: number): number {
+  if (length <= 0) {
+    return 0;
+  }
+
+  const digest = crypto.createHash("sha1").update(seed).digest();
+  return digest.readUInt32BE(0) % length;
+}
+
+function shuffleWithSeed<T>(items: T[], seed: string): T[] {
+  const result = [...items];
+
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = deterministicIndex(`${seed}:${index}`, index + 1);
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+  }
+
+  return result;
+}
+
+function buildFallbackMCQQuestions(
+  pdfText: string,
+  bookTitle: string,
+  count: number,
+): MCQQuestion[] {
+  const facts = extractFallbackFacts(pdfText, bookTitle);
+
+  if (facts.length === 0) {
+    return [];
+  }
+
+  const genericDistractors = [
+    "The passage focuses on a different concept.",
+    "This statement is not supported by the PDF text.",
+    "The PDF does not present this idea in the section provided.",
+    "This detail is unrelated to the content shown in the PDF.",
+  ];
+
+  const questions: MCQQuestion[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const fact = facts[index % facts.length];
+    const distractorPool = facts
+      .filter((candidate) => candidate.fact !== fact.fact)
+      .map((candidate) => candidate.fact);
+
+    while (distractorPool.length < 3) {
+      const fallback = genericDistractors[distractorPool.length % genericDistractors.length];
+      if (!distractorPool.includes(fallback)) {
+        distractorPool.push(fallback);
+      } else {
+        distractorPool.push(`${fallback} (${bookTitle || "PDF"})`);
+      }
+    }
+
+    const chosenDistractors = shuffleWithSeed(
+      distractorPool.slice(0, 3),
+      `${bookTitle}:${index}:distractors`,
+    );
+
+    const options = shuffleWithSeed(
+      [fact.fact, ...chosenDistractors],
+      `${bookTitle}:${index}:options`,
+    );
+
+    const correct = options.findIndex((option) => option === fact.fact);
+
+    questions.push({
+      id: index + 1,
+      question: `Which statement is most directly supported by the PDF section on ${fact.topic}?`,
+      options: {
+        A: options[0] || fact.fact,
+        B: options[1] || fact.fact,
+        C: options[2] || fact.fact,
+        D: options[3] || fact.fact,
+      },
+      correct: (["A", "B", "C", "D"][Math.max(0, correct)] || "A") as "A" | "B" | "C" | "D",
+      explanation: `This statement matches the PDF content about ${fact.topic}.`,
+      topic: fact.topic,
+    });
+  }
+
+  return questions;
+}
+
+function buildFallbackSummary(
+  pdfText: string,
+  bookTitle: string,
+  author: string,
+  genre: string,
+): BookSummary {
+  const sentences = pdfText
+    .split(/(?<=[.!?])\s+/g)
+    .map((sentence) => normalizeWhitespace(sentence))
+    .filter((sentence) => sentence.length >= 40);
+
+  const overviewSentences = sentences.slice(0, 3).map((sentence) => shortenText(sentence, 160));
+  const themeSeeds = extractFallbackFacts(pdfText, bookTitle)
+    .map((fact) => fact.topic)
+    .filter((topic, index, topics) => topics.indexOf(topic) === index)
+    .slice(0, 5);
+
+  return {
+    overview: overviewSentences.length > 0
+      ? `${overviewSentences.join(" ")} This fallback summary was built directly from the PDF text for ${bookTitle}.`
+      : `This fallback summary was built directly from the PDF text for ${bookTitle}.`,
+    keyThemes: themeSeeds.length > 0 ? themeSeeds : [bookTitle || "PDF content", genre || "General topics"],
+    targetReader: author
+      ? `Readers interested in ${genre || "this subject"} and the work associated with ${author}.`
+      : `Readers interested in ${genre || "this subject"}.`,
+    difficulty: sentences.length > 20 ? "Advanced" : sentences.length > 10 ? "Intermediate" : "Beginner",
+    estimatedTime: sentences.length > 20 ? "6-8 hours" : sentences.length > 10 ? "3-5 hours" : "1-2 hours",
+    basedOnPDF: true,
+  };
+}
+
+function buildFallbackKeyPoints(pdfText: string, bookTitle: string, author: string, genre: string): KeyPoints {
+  const facts = extractFallbackFacts(pdfText, bookTitle).slice(0, 8);
+  const chapterGroups = facts.slice(0, 3).map((fact, index) => ({
+    title: fact.topic || `Section ${index + 1}`,
+    points: [fact.fact],
+  }));
+
+  const glossary = facts.slice(0, 5).map((fact) => {
+    const term = fact.topic.split(" ").slice(0, 3).join(" ");
+    return {
+      term: term || fact.topic,
+      definition: fact.fact,
+    };
+  });
+
+  const takeaways = facts.slice(0, 5).map((fact) => fact.fact);
+
+  return {
+    chapters: chapterGroups.length > 0
+      ? chapterGroups
+      : [{ title: bookTitle || "PDF content", points: ["No structured chapter text could be extracted."] }],
+    glossary: glossary.length > 0 ? glossary : [],
+    takeaways: takeaways.length > 0 ? takeaways : [`Review the PDF content for ${bookTitle}.`],
+    examTips: [
+      `Focus on the recurring ideas in ${genre || "the book"}.`,
+      author ? `Connect examples back to ${author}'s discussion in the PDF.` : "Connect key statements back to the PDF text.",
+    ],
+    interviewTopics: [
+      `Core ideas from ${bookTitle}`,
+      genre ? `Questions about ${genre}` : "Questions about the PDF's main subject",
+    ],
+    basedOnPDF: true,
+  };
+}
+
+function isRetryableGenerationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const lowered = message.toLowerCase();
+
+  return (
+    lowered.includes("429") ||
+    lowered.includes("quota") ||
+    lowered.includes("rate limit") ||
+    lowered.includes("too many requests")
+  );
 }
 
 async function downloadPDFToTempFile(
@@ -294,14 +581,7 @@ export async function generateSummary(
   author: string,
   genre: string,
 ): Promise<BookSummary> {
-  const fallback: BookSummary = {
-    overview: "Summary generation failed. Please try again.",
-    keyThemes: ["Unavailable"],
-    targetReader: "Unavailable",
-    difficulty: "Intermediate",
-    estimatedTime: "Unknown",
-    basedOnPDF: false,
-  };
+  const fallback = buildFallbackSummary(pdfText, bookTitle, author, genre);
 
   const result = await generateJsonFromPdf({
     pdfText,
@@ -357,11 +637,12 @@ export async function generateMCQ(
   bookTitle: string,
   count = 10,
 ): Promise<MCQQuestion[]> {
-  const result = await generateJsonFromPdf({
-    pdfText,
-    title: bookTitle,
-    maxTokens: 3000,
-    prompt: `Read this PDF content and create exactly ${count} multiple choice questions.
+  try {
+    const result = await generateJsonFromPdf({
+      pdfText,
+      title: bookTitle,
+      maxTokens: 3000,
+      prompt: `Read this PDF content and create exactly ${count} multiple choice questions.
 
 Return this exact JSON:
 {
@@ -389,37 +670,54 @@ Requirements:
 - Topics must reference actual sections from the PDF
 - Explanations must cite specific content from the PDF
 - Do not create generic questions not in this specific PDF`,
-  });
+    });
 
-  if (!result.success || !result.text) {
-    console.error("[LangChain] MCQ failed:", result.error);
-    return [];
-  }
+    if (!result.success || !result.text) {
+      console.error("[LangChain] MCQ failed:", result.error);
+      return buildFallbackMCQQuestions(pdfText, bookTitle, count);
+    }
 
-  try {
-    const parsed = parseJSON(result.text);
+    try {
+      const parsed = parseJSON(result.text);
 
-    return (parsed.questions || [])
-      .slice(0, count)
-      .map((question: any, index: number) => ({
-        id: index + 1,
-        question: question.question || "",
-        options: {
-          A: question.options?.A || "",
-          B: question.options?.B || "",
-          C: question.options?.C || "",
-          D: question.options?.D || "",
-        },
-        correct: ["A", "B", "C", "D"].includes(question.correct)
-          ? question.correct
-          : "A",
-        explanation: question.explanation || "",
-        topic: question.topic || "General",
-      }))
-      .filter((question: MCQQuestion) => question.question.length > 10);
-  } catch (err: any) {
-    console.error("[LangChain] MCQ parse error:", err?.message || err);
-    return [];
+      const questions = (parsed.questions || [])
+        .slice(0, count)
+        .map((question: any, index: number) => ({
+          id: index + 1,
+          question: question.question || "",
+          options: {
+            A: question.options?.A || "",
+            B: question.options?.B || "",
+            C: question.options?.C || "",
+            D: question.options?.D || "",
+          },
+          correct: ["A", "B", "C", "D"].includes(question.correct)
+            ? question.correct
+            : "A",
+          explanation: question.explanation || "",
+          topic: question.topic || "General",
+        }))
+        .filter((question: MCQQuestion) => question.question.length > 10);
+
+      if (questions.length > 0) {
+        return questions;
+      }
+
+      console.warn("[LangChain] MCQ parse produced no usable questions; using fallback.");
+      return buildFallbackMCQQuestions(pdfText, bookTitle, count);
+    } catch (err: any) {
+      console.error("[LangChain] MCQ parse error:", err?.message || err);
+      return buildFallbackMCQQuestions(pdfText, bookTitle, count);
+    }
+  } catch (error: any) {
+    console.error("[LangChain] MCQ failed:", error?.message || error);
+
+    if (isRetryableGenerationError(error)) {
+      console.warn("[LangChain] MCQ hit a quota or rate limit; using local fallback.");
+      return buildFallbackMCQQuestions(pdfText, bookTitle, count);
+    }
+
+    return buildFallbackMCQQuestions(pdfText, bookTitle, count);
   }
 }
 
@@ -429,14 +727,7 @@ export async function generateKeyPoints(
   author: string,
   genre: string,
 ): Promise<KeyPoints> {
-  const fallback: KeyPoints = {
-    chapters: [{ title: "Unavailable", points: ["Try again later"] }],
-    glossary: [],
-    takeaways: [],
-    examTips: [],
-    interviewTopics: [],
-    basedOnPDF: false,
-  };
+  const fallback = buildFallbackKeyPoints(pdfText, bookTitle, author, genre);
 
   const result = await generateJsonFromPdf({
     pdfText,

@@ -13,6 +13,7 @@ import {
   useToggleBookStatusMutation,
   useDeleteBookMutation,
   useClearAiStudyCacheMutation,
+  useRepairAiStatusesMutation,
 } from "../../../../store/services/api";
 
 interface AdminBook {
@@ -76,6 +77,8 @@ export default function AdminBooksPage() {
     useDeleteBookMutation();
   const [clearAiStudyCache, { isLoading: isRefreshingAi }] =
     useClearAiStudyCacheMutation();
+  const [repairAiStatuses, { isLoading: isRepairingAiStatuses }] =
+    useRepairAiStatusesMutation();
 
   const handleRetryAi = async (bookId: string) => {
     try {
@@ -88,8 +91,21 @@ export default function AdminBooksPage() {
     }
   };
 
-  const isRetryableAiStatus = (status?: AdminBook["extractionStatus"]) =>
-    status === "pending" || status === "failed" || status === "no_pdf";
+  const handleRepairAiStatuses = async () => {
+    try {
+      const response = await repairAiStatuses().unwrap();
+      const repaired = response.repaired ?? 0;
+      const scanned = response.scanned ?? 0;
+      const failed = response.failed ?? 0;
+      toast.success(
+        response.message || `Checked ${scanned} books, repaired ${repaired}, failed ${failed}`,
+      );
+      refetch();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to repair AI statuses";
+      toast.error(message);
+    }
+  };
 
   const handleToggleStatus = async (bookId: string) => {
     setTogglingId(bookId);
@@ -150,6 +166,13 @@ export default function AdminBooksPage() {
               className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             >
               Import Books
+            </button>
+            <button
+              onClick={handleRepairAiStatuses}
+              disabled={isRepairingAiStatuses}
+              className="rounded-xl border border-purple-200 bg-white px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition-colors disabled:opacity-50"
+            >
+              {isRepairingAiStatuses ? "Repairing..." : "Repair AI Statuses"}
             </button>
             <Link href="/admin/books/new">
               <button className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors flex items-center gap-2">
@@ -336,15 +359,14 @@ export default function AdminBooksPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2">
-                            {isRetryableAiStatus(book.extractionStatus) && (
-                              <button
-                                onClick={() => handleRetryAi(book._id)}
-                                disabled={isRefreshingAi}
-                                className="rounded-lg border border-purple-200 px-2 py-1 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {isRefreshingAi ? "Refreshing..." : "Refresh AI"}
-                              </button>
-                            )}
+                            <button
+                              onClick={() => handleRetryAi(book._id)}
+                              disabled={isRefreshingAi}
+                              className="rounded-lg border border-purple-200 px-2 py-1 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              title="Clear the cached AI study data and regenerate it on the next request"
+                            >
+                              {isRefreshingAi ? "Refreshing..." : "Clear AI Cache"}
+                            </button>
                             <Link href={`/admin/books/${book._id}/edit`}>
                               <button className="text-xs font-medium text-blue-600 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50">
                                 Edit
@@ -432,15 +454,14 @@ export default function AdminBooksPage() {
                     </div>
                   </div>
                   <div className="flex gap-2 pt-4 border-t border-gray-100">
-                    {isRetryableAiStatus(book.extractionStatus) ? (
-                      <button
-                        onClick={() => handleRetryAi(book._id)}
-                        disabled={isRefreshingAi}
-                        className="flex-1 rounded-lg border border-purple-200 py-2 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {isRefreshingAi ? "Refreshing..." : "Refresh AI"}
-                      </button>
-                    ) : null}
+                    <button
+                      onClick={() => handleRetryAi(book._id)}
+                      disabled={isRefreshingAi}
+                      className="flex-1 rounded-lg border border-purple-200 py-2 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Clear the cached AI study data and regenerate it on the next request"
+                    >
+                      {isRefreshingAi ? "Refreshing..." : "Clear AI Cache"}
+                    </button>
                     <Link href={`/admin/books/${book._id}/edit`} className="flex-1">
                       <button className="w-full text-xs font-medium text-blue-600 hover:text-blue-700 py-2 rounded hover:bg-blue-50">
                         Edit

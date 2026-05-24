@@ -132,7 +132,7 @@ router.patch(
     const user = await User.findByIdAndUpdate(
       req.user!.id,
       { monthlyGoal: parseInt(String(monthlyGoal), 10) },
-      { new: true },
+      { returnDocument: "after" },
     ).select("monthlyGoal");
 
     if (!user) throw new ApiError(404, "User not found");
@@ -175,7 +175,7 @@ router.patch(
     const user = await User.findByIdAndUpdate(
       req.user!.id,
       { $set: update },
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     ).select("name email avatar role preferences streak monthlyGoal");
 
     if (!user) throw new ApiError(404, "User not found");
@@ -225,7 +225,7 @@ router.patch(
     const user = await User.findByIdAndUpdate(
       req.user!.id,
       { $set: update },
-      { new: true },
+      { returnDocument: "after" },
     ).select("preferences");
 
     if (!user) throw new ApiError(404, "User not found");

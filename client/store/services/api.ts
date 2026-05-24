@@ -470,6 +470,19 @@ export const api = createApi({
       query: (bookId) => ({ url: `/api/ai-study/${bookId}/cache`, method: "DELETE" }),
       invalidatesTags: (_result, _error, bookId) => [{ type: "Book", id: bookId }, "Admin", "Books"],
     }),
+    repairAiStatuses: builder.mutation<
+      ApiResponse<{
+        message: string;
+        scanned: number;
+        repaired: number;
+        failed: number;
+        skipped: Array<{ id: string; title: string; reason: string }>;
+      }>,
+      void
+    >({
+      query: () => ({ url: "/api/admin/books/repair-ai-statuses", method: "POST" }),
+      invalidatesTags: ["Admin", "Books"],
+    }),
     toggleBookStatus: builder.mutation<ApiResponse<MessageResponse>, string>({
       query: (bookId) => ({ url: `/api/books/${bookId}/toggle-status`, method: "PATCH" }),
     }),
@@ -633,6 +646,7 @@ export const {
   useModerateReviewMutation,
   useGetAdminBooksQuery,
   useClearAiStudyCacheMutation,
+  useRepairAiStatusesMutation,
   useToggleBookStatusMutation,
   useDeleteBookMutation,
   useBulkImportBooksMutation,

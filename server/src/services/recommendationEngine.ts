@@ -60,7 +60,7 @@ export async function computeColdStartForUser(userId: string): Promise<void> {
         },
         $inc: { version: 1 },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: "after" },
     );
   } catch (err) {
     console.error("[Recommendations] computeColdStartForUser failed:", err);
@@ -189,7 +189,7 @@ export async function computeRecommendations(): Promise<void> {
           },
           $inc: { version: 1 },
         },
-        { upsert: true, new: true },
+        { upsert: true, returnDocument: "after" },
       );
     } else {
       await computeColdStartForUser(userId);

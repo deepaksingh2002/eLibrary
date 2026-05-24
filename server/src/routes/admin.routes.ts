@@ -446,6 +446,71 @@ router.patch(
 );
 
 router.post(
+  "/books/repair-ai-statuses",
+  asyncHandler(async (_req, res) => {
+    const stuckBooks = await Book.find({
+      isDeleted: false,
+      extractionStatus: "processing",
+      pdfUrl: { $exists: true, $ne: "" },
+    })
+      .select("_id title extractionStatus extractionError extractedAt pdfTextExtracted")
+      .lean();
+
+    let repaired = 0;
+    let failed = 0;
+    const skipped: Array<{ id: string; title: string; reason: string }> = [];
+
+    for (const book of stuckBooks) {
+      const normalizedStatus = normalizeExtractionStatus({
+        extractionStatus: book.extractionStatus,
+        pdfUrl: "present",
+        pdfTextExtracted: book.pdfTextExtracted,
+        extractedAt: book.extractedAt,
+        extractionError: book.extractionError,
+      });
+
+      if (normalizedStatus === "ready") {
+        await Book.findByIdAndUpdate(book._id, {
+          extractionStatus: "ready",
+          extractionError: "",
+          pdfTextExtracted: true,
+          extractedAt: book.extractedAt || new Date(),
+        });
+        repaired += 1;
+        continue;
+      }
+
+      if (normalizedStatus === "failed") {
+        await Book.findByIdAndUpdate(book._id, {
+          extractionStatus: "failed",
+          extractionError:
+            book.extractionError || "AI processing did not complete successfully",
+        });
+        failed += 1;
+        continue;
+      }
+
+      skipped.push({
+        id: book._id.toString(),
+        title: book.title || "Untitled",
+        reason: "No completion markers were found for this processing record",
+      });
+    }
+
+    res.status(200).json({
+      scanned: stuckBooks.length,
+      repaired,
+      failed,
+      skipped,
+      message:
+        repaired > 0
+          ? "Stale AI statuses repaired"
+          : "No repairable processing records were found",
+    });
+  }),
+);
+
+router.post(
   "/books/bulk-import",
   asyncHandler(async (req, res) => {
     const books = req.body.books;
@@ -692,7 +757,7 @@ router.patch(
     const user = await User.findByIdAndUpdate(
       userId,
       { role },
-      { new: true },
+      { returnDocument: "after" },
     ).select("name email role");
 
     if (!user) throw new ApiError(404, "User not found");
@@ -719,7 +784,7 @@ router.delete(
         passwordResetToken: undefined,
         email: `deleted_${userId}@deleted.com`,
       },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (!user) throw new ApiError(404, "User not found");

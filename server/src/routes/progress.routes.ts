@@ -71,7 +71,7 @@ router.patch(
       updateObj,
       {
         upsert: true,
-        new: true,
+        returnDocument: "after",
         runValidators: true,
         setDefaultsOnInsert: true,
       },
