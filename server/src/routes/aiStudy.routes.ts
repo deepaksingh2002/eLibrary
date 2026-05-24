@@ -36,17 +36,25 @@ async function saveCache(
   type: "summary" | "mcq" | "keypoints",
   data: any,
 ) {
-  await AIStudyCache.findOneAndUpdate(
-    { bookId: new Types.ObjectId(bookId), type },
-    {
-      $set: {
-        data,
-        createdAt: new Date(),
-        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
-      },
+  const filter = { bookId: new Types.ObjectId(bookId), type }
+  const update = {
+    $set: {
+      data,
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
     },
-    { upsert: true },
-  )
+  }
+
+  try {
+    await AIStudyCache.findOneAndUpdate(filter, update, { upsert: true })
+  } catch (error: any) {
+    if (error?.code === 11000) {
+      await AIStudyCache.updateOne(filter, update)
+      return
+    }
+
+    throw error
+  }
 }
 
 async function getBook(bookId: string) {
@@ -152,7 +160,9 @@ router.get(
     }
 
     const summary = await generateSummary(pdf.text, book.title, book.author, book.genre)
-    await saveCache(bookId, "summary", summary)
+    if (summary.basedOnPDF) {
+      await saveCache(bookId, "summary", summary)
+    }
 
     res.json({
       summary,
@@ -196,7 +206,9 @@ router.get(
     }
 
     const questions = await generateMCQ(pdf.text, book.title, count)
-    await saveCache(bookId, "mcq", questions)
+    if (questions.length > 0) {
+      await saveCache(bookId, "mcq", questions)
+    }
 
     res.json({
       questions,
@@ -245,7 +257,9 @@ router.get(
     }
 
     const keyPoints = await generateKeyPoints(pdf.text, book.title, book.author, book.genre)
-    await saveCache(bookId, "keypoints", keyPoints)
+    if (keyPoints.basedOnPDF) {
+      await saveCache(bookId, "keypoints", keyPoints)
+    }
 
     res.json({
       keyPoints,
