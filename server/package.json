@@ -46,10 +46,12 @@
     "multer-storage-cloudinary": "^4.0.0",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.7",
+    "pdf-parse": "^2.4.5",
     "typescript": "^6.0.3"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
+    "@types/pdf-parse": "^1.1.5",
     "cross-fetch": "^4.1.0",
     "jest": "^30.4.2",
     "ts-jest": "^29.4.11",

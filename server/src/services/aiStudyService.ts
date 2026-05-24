@@ -225,58 +225,6 @@ Return ONLY valid JSON — no markdown:
 }
 
 // ─────────────────────────────────────────────────────────
-// GENERATE FLASHCARDS
-// AI pipeline reads the PDF and returns simple Q/A flashcards
-// ─────────────────────────────────────────────────────────
-export async function generateFlashcards(
-  book: BookForAI,
-  count = 8,
-): Promise<{ question: string; answer: string }[]> {
-  if (!book.pdfUrl) {
-    console.error("[AIStudy] No PDF URL for flashcards");
-    return [];
-  }
-
-  const prompt = `You are an expert study assistant.
-Read this PDF and generate exactly ${count} concise flashcards.
-
-Return ONLY valid JSON — no markdown:
-{
-  "flashcards": [
-    { "question": "Short question based on the PDF", "answer": "Short answer citing the PDF" }
-  ]
-}
-
-Requirements:
-- Questions and answers must come from the PDF content.
-- Keep Q/A concise (one or two sentences).`;
-
-  const result = await generateFromPdfWithLangChain({
-    pdfUrl: book.pdfUrl,
-    title: book.title,
-    prompt,
-    maxOutputTokens: 1500,
-  });
-
-  if (!result.success || !result.text) {
-    console.error("[AIStudy] Flashcards generation failed:", result.error);
-    return [];
-  }
-
-  try {
-    const parsed = parseJSON(result.text);
-    return (parsed.flashcards || []).slice(0, count).map((f: any) => ({
-      question: f.question || "",
-      answer: f.answer || "",
-    })).filter((f: any) => f.question && f.answer);
-  } catch (err: any) {
-    console.error("[AIStudy] Flashcards parse error:", err.message);
-    return [];
-  }
-}
-
-
-// ─────────────────────────────────────────────────────────
 // GENERATE KEY POINTS + EXAM TIPS + INTERVIEW TOPICS
 // ─────────────────────────────────────────────────────────
 export async function generateKeyPoints(book: BookForAI): Promise<KeyPoints> {

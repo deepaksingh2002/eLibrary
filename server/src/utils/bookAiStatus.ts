@@ -7,7 +7,7 @@ export interface BookAiStatusSource {
 
 const STATUS_SET = new Set<BookExtractionStatus>([
   "pending",
-  "uploading",
+  "processing",
   "ready",
   "failed",
   "no_pdf",
@@ -19,7 +19,7 @@ export function normalizeExtractionStatus(
   const status = book.extractionStatus;
 
   if (
-    status === "uploading" ||
+    status === "processing" ||
     status === "ready" ||
     status === "failed" ||
     status === "no_pdf"

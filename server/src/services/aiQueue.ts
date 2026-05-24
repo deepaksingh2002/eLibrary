@@ -1,13 +1,13 @@
 import { Queue, Worker, Job } from "bullmq";
 import { redisConfigFromEnv } from "../config/redisConfig";
-import { generateBookSummary, generateMCQQuestions, generateKeyPoints, generateFlashcards } from "./aiStudyService";
+import { generateBookSummary, generateMCQQuestions, generateKeyPoints } from "./aiStudyService";
 import AIStudyCache from "../models/AIStudyCache";
 import { Types } from "mongoose";
 
 const connection = redisConfigFromEnv();
 export const aiQueue = connection ? new Queue("ai-jobs", { connection }) : null;
 
-type AIJobType = "summary" | "mcq" | "keypoints" | "flashcards";
+type AIJobType = "summary" | "mcq" | "keypoints";
 
 async function persistAIResult(
   bookId: string,
@@ -15,7 +15,7 @@ async function persistAIResult(
   data: unknown,
 ) {
   await AIStudyCache.findOneAndUpdate(
-    { bookId: new Types.ObjectId(bookId), type },
+    ({ bookId: new Types.ObjectId(bookId), type } as any),
     {
       $set: {
         data,
@@ -44,12 +44,6 @@ async function runAIJob(bookId: string, type: AIJobType, opts: any = {}) {
     const keyPoints = await generateKeyPoints({ _id: bookId } as any);
     await persistAIResult(bookId, type, keyPoints);
     return keyPoints;
-  }
-
-  if (type === "flashcards") {
-    const cards = await generateFlashcards({ _id: bookId } as any, opts?.count || 8);
-    await persistAIResult(bookId, type, cards);
-    return cards;
   }
 
   throw new Error(`Unsupported AI job type: ${type}`);

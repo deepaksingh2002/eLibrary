@@ -2,7 +2,7 @@ import mongoose, { Document, Schema } from "mongoose";
 
 export type BookExtractionStatus =
   | "pending"
-  | "uploading"
+  | "processing"
   | "ready"
   | "failed"
   | "no_pdf";
@@ -18,6 +18,7 @@ export interface IBook extends Document {
   coverPublicId: string;
   pdfUrl: string;
   pdfPublicId: string;
+  pdfTextExtracted: boolean;
   extractionStatus: BookExtractionStatus;
   extractionPages: number;
   extractionError: string;
@@ -56,9 +57,10 @@ const bookSchema = new Schema<IBook>(
     coverPublicId: { type: String, default: "" },
     pdfUrl: { type: String, default: "" },
     pdfPublicId: { type: String, default: "" },
+    pdfTextExtracted: { type: Boolean, default: false },
     extractionStatus: {
       type: String,
-      enum: ["pending", "uploading", "ready", "failed", "no_pdf"],
+      enum: ["pending", "processing", "ready", "failed", "no_pdf"],
       default: "pending",
     },
     extractionPages: {

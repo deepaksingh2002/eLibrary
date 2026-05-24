@@ -1,9 +1,9 @@
 "use client"
 import { useState } from "react"
 import { useAuthStore } from "../store/authStore"
-import { useGetAiStudySummaryQuery, useGetAiStudyMcqQuery, useGetAiStudyKeyPointsQuery, useGetAiStudyFlashcardsQuery, useGetAiStudyStatusQuery } from "../store/services/api"
+import { useGetAiStudySummaryQuery, useGetAiStudyMcqQuery, useGetAiStudyKeyPointsQuery, useGetAiStudyStatusQuery } from "../store/services/api"
 
-export type AIStudyTab = "flashcards" | "summary" | "mcq" | "keypoints"
+export type AIStudyTab = "summary" | "mcq" | "keypoints"
 
 export interface MCQQuestion {
   id: number
@@ -71,11 +71,6 @@ export function useAIStudy(bookId: string) {
     skip: !(isOpen && activeTab === "keypoints" && !!bookId && isAuthenticated),
     refetchOnMountOrArgChange: false,
   })
-  const flashcardsQuery = useGetAiStudyFlashcardsQuery(bookId, {
-    skip: !(isOpen && activeTab === "flashcards" && !!bookId && isAuthenticated),
-    refetchOnMountOrArgChange: false,
-  })
-  
   // Status fetch to show PDF readiness and errors
   const statusQuery = useGetAiStudyStatusQuery(bookId, {
     skip: !(isOpen && !!bookId && isAuthenticated),
@@ -93,7 +88,6 @@ export function useAIStudy(bookId: string) {
       summary: summaryQuery.refetch,
       mcq: mcqQuery.refetch,
       keyPoints: keyPointsQuery.refetch,
-      flashcards: flashcardsQuery.refetch,
       status: statusQuery.refetch,
     },
     summary: {
@@ -114,13 +108,6 @@ export function useAIStudy(bookId: string) {
       isLoading: keyPointsQuery.isLoading || keyPointsQuery.isFetching,
       cached: keyPointsQuery.data?.cached || false,
       basedOnPDF: keyPointsQuery.data?.basedOnPDF || false,
-    },
-    flashcards: {
-      cards: (flashcardsQuery.data?.flashcards || []) as { question: string; answer: string }[],
-      isLoading: flashcardsQuery.isLoading || flashcardsQuery.isFetching,
-      cached: flashcardsQuery.data?.cached || false,
-      basedOnPDF: flashcardsQuery.data?.basedOnPDF || false,
-      total: flashcardsQuery.data?.total || (flashcardsQuery.data?.flashcards?.length || 0),
     },
     status: {
       data: statusQuery.data || null,

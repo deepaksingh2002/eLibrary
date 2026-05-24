@@ -514,14 +514,6 @@ export const api = createApi({
     getAiStudyMcq: builder.query<AiStudyMcqResponse, string>({
       query: (bookId) => `/api/ai-study/${bookId}/mcq?count=10`,
     }),
-    getAiStudyFlashcards: builder.query<{
-      flashcards?: Array<{ question: string; answer: string }>;
-      total?: number;
-      cached?: boolean;
-      basedOnPDF?: boolean;
-    }, string>({
-      query: (bookId) => `/api/ai-study/${bookId}/flashcards?count=8`,
-    }),
     getAiStudyKeyPoints: builder.query<AiStudyKeyPointsResponse, string>({
       query: (bookId) => `/api/ai-study/${bookId}/key-points`,
     }),
@@ -650,7 +642,6 @@ export const {
   useGetBookSummaryQuery,
   useGetAiStudySummaryQuery,
   useGetAiStudyMcqQuery,
-  useGetAiStudyFlashcardsQuery,
   useGetAiStudyStatusQuery,
   useGetAiStudyKeyPointsQuery,
   useGetReadingProgressQuery,

@@ -7,7 +7,6 @@ import { useAuthStore } from "../../store/authStore"
 import BookSummary from "./BookSummary"
 import MCQQuiz from "./MCQQuiz"
 import KeyPoints from "./KeyPoints"
-import Flashcards from "./Flashcards"
 
 interface Props {
   bookId: string
@@ -15,13 +14,12 @@ interface Props {
 }
 
 export default function AIStudyPanel({ bookId, bookTitle }: Props) {
-  const { isOpen, activeTab, setActiveTab, openPanel, closePanel, summary, mcq, keyPoints, flashcards, refetch, status } = useAIStudy(bookId)
+  const { isOpen, activeTab, setActiveTab, openPanel, closePanel, summary, mcq, keyPoints, refetch, status } = useAIStudy(bookId)
   const { user, isAuthenticated } = useAuthStore()
   const pathname = usePathname()
   const signInHref = `/login?returnUrl=${encodeURIComponent(pathname || "/")}`
 
   const tabs: { key: AIStudyTab; icon: string; label: string }[] = [
-    { key: "flashcards", icon: "🃏", label: "Flashcards" },
     { key: "summary", icon: "📋", label: "Summary" },
     { key: "mcq", icon: "❓", label: "MCQ Quiz" },
     { key: "keypoints", icon: "🗝️", label: "Key Points + Interview" },
@@ -39,7 +37,7 @@ export default function AIStudyPanel({ bookId, bookTitle }: Props) {
       }
       const keys = ["ArrowLeft", "ArrowRight"]
       if (!keys.includes(e.key)) return
-      const order: AIStudyTab[] = ["flashcards", "summary", "mcq", "keypoints"]
+      const order: AIStudyTab[] = ["summary", "mcq", "keypoints"]
       const idx = order.indexOf(activeTab)
       if (e.key === "ArrowLeft") setActiveTab(order[(idx - 1 + order.length) % order.length])
       if (e.key === "ArrowRight") setActiveTab(order[(idx + 1) % order.length])
@@ -134,7 +132,7 @@ export default function AIStudyPanel({ bookId, bookTitle }: Props) {
           {!isAuthenticated && (
             <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm mb-4 dark:border-slate-800 dark:bg-slate-900">
               <div className="mb-3 text-sm font-semibold">Sign in to use AI Study</div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">AI features require authentication. Please log in to generate summaries, quizzes, and flashcards from PDFs.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">AI features require authentication. Please log in to generate summaries, quizzes, and study notes from PDFs.</p>
               <div className="mt-4">
                 <Link href={signInHref} className="rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white">
                   Sign in
@@ -172,41 +170,6 @@ export default function AIStudyPanel({ bookId, bookTitle }: Props) {
           )}
           <div role="tabpanel" id="panel-summary" aria-labelledby="tab-summary" hidden={activeTab !== "summary"} tabIndex={0}>
             <BookSummary summary={summary.data} isLoading={summary.isLoading} cached={summary.cached} basedOnPDF={summary.basedOnPDF} />
-          </div>
-
-          <div role="tabpanel" id="panel-flashcards" aria-labelledby="tab-flashcards" hidden={activeTab !== "flashcards"} tabIndex={0}>
-            {/* If AI failed for flashcards, show error + canned flashcards */}
-            {!flashcards.isLoading && flashcards.cards.length === 0 && flashcards.basedOnPDF && (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800 shadow-sm dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-100 mb-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="font-semibold">⚠️ AI flashcards unavailable</div>
-                    <div className="mt-1">We couldn't generate flashcards right now. Try retrying or use the sample flashcards below.</div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <button onClick={() => refetch.flashcards()} className="rounded-full bg-rose-600 px-3 py-1 text-xs font-semibold text-white">Retry</button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!flashcards.isLoading && flashcards.cards.length === 0 && flashcards.basedOnPDF && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200 mb-4">
-                <div className="font-semibold mb-2">Sample flashcards (fallback)</div>
-                <ul className="space-y-3 text-sm">
-                  <li>
-                    <div className="font-medium">Q: What is a greedy algorithm?</div>
-                    <div className="text-slate-500">A: An algorithm that makes the locally optimal choice at each step.</div>
-                  </li>
-                  <li>
-                    <div className="font-medium">Q: Which data structure supports FIFO?</div>
-                    <div className="text-slate-500">A: Queue.</div>
-                  </li>
-                </ul>
-              </div>
-            )}
-
-            <Flashcards cards={flashcards.cards} isLoading={flashcards.isLoading} />
           </div>
 
           <div role="tabpanel" id="panel-mcq" aria-labelledby="tab-mcq" hidden={activeTab !== "mcq"} tabIndex={0}>

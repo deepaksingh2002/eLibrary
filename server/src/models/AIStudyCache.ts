@@ -1,11 +1,11 @@
-import mongoose, { Schema, Document } from "mongoose";
+import mongoose, { Schema, Document } from "mongoose"
 
 export interface IAIStudyCache extends Document {
-  bookId: mongoose.Types.ObjectId;
-  type: "summary" | "mcq" | "keypoints" | "flashcards";
-  data: any;
-  createdAt: Date;
-  expiresAt: Date;
+  bookId: mongoose.Types.ObjectId
+  type: "summary" | "mcq" | "keypoints"
+  data: any
+  createdAt: Date
+  expiresAt: Date
 }
 
 const AIStudyCacheSchema = new Schema<IAIStudyCache>({
@@ -16,7 +16,7 @@ const AIStudyCacheSchema = new Schema<IAIStudyCache>({
   },
   type: {
     type: String,
-    enum: ["summary", "mcq", "keypoints", "flashcards"],
+    enum: ["summary", "mcq", "keypoints"],
     required: true,
   },
   data: { type: Schema.Types.Mixed, required: true },
@@ -25,15 +25,9 @@ const AIStudyCacheSchema = new Schema<IAIStudyCache>({
     type: Date,
     default: () => new Date(Date.now() + 48 * 60 * 60 * 1000),
   },
-});
+})
 
-// One cache document per book per type
-AIStudyCacheSchema.index({ bookId: 1, type: 1 }, { unique: true });
+AIStudyCacheSchema.index({ bookId: 1, type: 1 }, { unique: true })
+AIStudyCacheSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 
-// MongoDB auto-deletes expired documents
-AIStudyCacheSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-
-export default mongoose.model<IAIStudyCache>(
-  "AIStudyCache",
-  AIStudyCacheSchema,
-);
+export default mongoose.model<IAIStudyCache>("AIStudyCache", AIStudyCacheSchema)
