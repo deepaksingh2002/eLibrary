@@ -221,6 +221,7 @@ interface AiStudyMcqResponse {
   total?: number;
   cached?: boolean;
   basedOnPDF?: boolean;
+  error?: string;
 }
 
 interface StudyKeyPoints {

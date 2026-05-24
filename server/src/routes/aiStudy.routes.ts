@@ -7,11 +7,10 @@ import { normalizeExtractionStatus } from "../utils/bookAiStatus"
 import Book from "../models/Book"
 import AIStudyCache from "../models/AIStudyCache"
 import {
-  loadBookPDF,
-  generateSummary,
-  generateMCQ,
+  generateBookSummary,
+  generateMCQQuestions,
   generateKeyPoints,
-} from "../services/langchainPdfService"
+} from "../services/aiStudyService"
 
 const router = Router()
 router.use(protect)
@@ -97,24 +96,6 @@ async function getBook(bookId: string) {
   return book as any
 }
 
-async function getPDFText(book: any): Promise<{
-  text: string
-  pages: number
-  success: boolean
-  error?: string
-}> {
-  if (!book.pdfUrl) {
-    return {
-      text: "",
-      pages: 0,
-      success: false,
-      error: "No PDF found for this book",
-    }
-  }
-
-  return loadBookPDF(book.pdfUrl, book.title)
-}
-
 router.get(
   "/:bookId/status",
   asyncHandler(async (req, res) => {
@@ -167,24 +148,7 @@ router.get(
     const book = await getBook(bookId)
     console.log("[AIStudy] Generating summary:", book.title)
 
-    const pdf = await getPDFText(book)
-    if (!pdf.success || !pdf.text) {
-      return res.json({
-        summary: {
-          overview: pdf.error || "PDF could not be read",
-          keyThemes: [],
-          targetReader: "",
-          difficulty: "Intermediate",
-          estimatedTime: "",
-          basedOnPDF: false,
-        },
-        cached: false,
-        basedOnPDF: false,
-        error: pdf.error,
-      })
-    }
-
-    const summary = await generateSummary(pdf.text, book.title, book.author, book.genre)
+    const summary = await generateBookSummary(book as any)
     if (summary.basedOnPDF) {
       await saveCache(bookId, "summary", summary)
     }
@@ -219,18 +183,7 @@ router.get(
     const book = await getBook(bookId)
     console.log("[AIStudy] Generating MCQ:", book.title)
 
-    const pdf = await getPDFText(book)
-    if (!pdf.success || !pdf.text) {
-      return res.json({
-        questions: [],
-        total: 0,
-        cached: false,
-        basedOnPDF: false,
-        error: pdf.error,
-      })
-    }
-
-    const questions = await generateMCQ(pdf.text, book.title, count)
+    const questions = await generateMCQQuestions(book as any, count)
     if (questions.length > 0) {
       await saveCache(bookId, "mcq", questions)
     }
@@ -265,24 +218,7 @@ router.get(
     const book = await getBook(bookId)
     console.log("[AIStudy] Generating key points:", book.title)
 
-    const pdf = await getPDFText(book)
-    if (!pdf.success || !pdf.text) {
-      return res.json({
-        keyPoints: {
-          chapters: [],
-          glossary: [],
-          takeaways: [],
-          examTips: [],
-          interviewTopics: [],
-          basedOnPDF: false,
-        },
-        cached: false,
-        basedOnPDF: false,
-        error: pdf.error,
-      })
-    }
-
-    const keyPoints = await generateKeyPoints(pdf.text, book.title, book.author, book.genre)
+    const keyPoints = await generateKeyPoints(book as any)
     if (keyPoints.basedOnPDF) {
       await saveCache(bookId, "keypoints", keyPoints)
     }

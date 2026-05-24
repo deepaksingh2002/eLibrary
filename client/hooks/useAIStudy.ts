@@ -102,6 +102,7 @@ export function useAIStudy(bookId: string) {
       cached: mcqQuery.data?.cached || false,
       basedOnPDF: mcqQuery.data?.basedOnPDF || false,
       total: mcqQuery.data?.total || 0,
+      error: mcqQuery.data?.error || null,
     },
     keyPoints: {
       data: normalizeKeyPointsData(keyPointsQuery.data?.keyPoints),

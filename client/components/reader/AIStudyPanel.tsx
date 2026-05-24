@@ -175,12 +175,12 @@ export default function AIStudyPanel({ bookId, bookTitle }: Props) {
           <div role="tabpanel" id="panel-mcq" aria-labelledby="tab-mcq" hidden={activeTab !== "mcq"} tabIndex={0}>
             <div className="space-y-4">
               {/* If AI returned no questions but indicates it read the PDF, show a clear error and fallback */}
-              {!mcq.isLoading && mcq.questions.length === 0 && mcq.basedOnPDF && (
+              {!mcq.isLoading && mcq.questions.length === 0 && (
                 <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800 shadow-sm dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-100">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="font-semibold">⚠️ AI generation currently unavailable</div>
-                      <div className="mt-1">We tried to generate quiz questions but the AI service returned no results. This is usually temporary (quota or rate limits).</div>
+                      <div className="mt-1">{mcq.error || "We tried to generate quiz questions but the AI service returned no results."}</div>
                     </div>
                     <div className="flex-shrink-0">
                       <button
@@ -195,7 +195,7 @@ export default function AIStudyPanel({ bookId, bookTitle }: Props) {
               )}
 
               {/* Render canned fallback MCQs when AI fails */}
-              {!mcq.isLoading && mcq.questions.length === 0 && mcq.basedOnPDF && (
+              {!mcq.isLoading && mcq.questions.length === 0 && mcq.basedOnPDF && !mcq.error && (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200">
                   <div className="font-semibold mb-2">Sample practice questions (fallback)</div>
                   <ol className="list-decimal list-inside space-y-3">

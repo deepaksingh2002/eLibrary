@@ -8,6 +8,7 @@ import {
 } from "../config/cloudinary";
 import { ApiError } from "../utils/ApiError";
 import { normalizeExtractionStatus } from "../utils/bookAiStatus";
+import { scheduleBookAiProcessing } from "./bookAiProcessing";
 import { summarizeBookWithAIInsights, summarizeReaderOpinions } from "./aiBookInsightsService";
 import { resolveExternalPdfUrl } from "./externalPdfResolver";
 
@@ -400,10 +401,9 @@ export async function createBook(
       coverPublicId,
       pdfUrl: pdfResult.pdfUrl,
       pdfPublicId: pdfResult.pdfPublicId,
-      extractionStatus: "ready",
+      extractionStatus: "processing",
       extractionPages: 0,
       extractionError: "",
-      extractedAt: new Date(),
       status,
       uploadedBy: user.id,
     });
@@ -411,6 +411,12 @@ export async function createBook(
       id: book._id.toString(),
       pdfUrl: book.pdfUrl,
       pdfPublicId: book.pdfPublicId,
+    });
+
+    scheduleBookAiProcessing({
+      bookId: book._id.toString(),
+      pdfUrl: book.pdfUrl || "",
+      title: book.title,
     });
 
     return {
@@ -509,10 +515,9 @@ export async function updateBook(
       previousPdfPublicId = book.pdfPublicId;
       book.pdfUrl = pdfResult.pdfUrl;
       book.pdfPublicId = pdfResult.pdfPublicId;
-      book.extractionStatus = "ready";
+      book.extractionStatus = "processing";
       book.extractionPages = 0;
       book.extractionError = "";
-      book.extractedAt = new Date();
     }
 
     await book.save();
@@ -525,6 +530,15 @@ export async function updateBook(
         ? deleteFromCloudinary(previousPdfPublicId, "raw")
         : Promise.resolve(),
     ]);
+
+    if (pdf) {
+      scheduleBookAiProcessing({
+        bookId: book._id.toString(),
+        pdfUrl: book.pdfUrl || "",
+        title: book.title,
+        force: true,
+      });
+    }
 
     return {
       message: "Book updated successfully",
@@ -640,7 +654,16 @@ export async function resolveBookPdf(id: string) {
   }
 
   book.pdfUrl = resolvedPdfUrl;
+  book.extractionStatus = "processing";
+  book.extractionError = "";
+  book.extractionPages = 0;
   await book.save();
+
+  scheduleBookAiProcessing({
+    bookId: book._id.toString(),
+    pdfUrl: book.pdfUrl || "",
+    title: book.title,
+  });
 
   return {
     message: "PDF resolved and saved successfully",
