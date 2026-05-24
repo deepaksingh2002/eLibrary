@@ -81,6 +81,72 @@ async function saveCache(
   }
 }
 
+function respondWithSummary(
+  res: import("express").Response,
+  summary: Awaited<ReturnType<typeof generateBookSummary>>,
+  cached: boolean,
+) {
+  if (!summary.basedOnPDF) {
+    return res.status(503).json({
+      summary,
+      cached,
+      basedOnPDF: false,
+      error: "AI summary generation is unavailable until the PDF is indexed.",
+    })
+  }
+
+  return res.status(200).json({
+    summary,
+    cached,
+    basedOnPDF: true,
+  })
+}
+
+function respondWithKeyPoints(
+  res: import("express").Response,
+  keyPoints: Awaited<ReturnType<typeof generateKeyPoints>>,
+  cached: boolean,
+) {
+  if (!keyPoints.basedOnPDF) {
+    return res.status(503).json({
+      keyPoints,
+      cached,
+      basedOnPDF: false,
+      error: "AI key point generation is unavailable until the PDF is indexed.",
+    })
+  }
+
+  return res.status(200).json({
+    keyPoints,
+    cached,
+    basedOnPDF: true,
+  })
+}
+
+function respondWithMcq(
+  res: import("express").Response,
+  questions: Awaited<ReturnType<typeof generateMCQQuestions>>,
+  cached: boolean,
+  errorMessage: string,
+) {
+  if (questions.length === 0) {
+    return res.status(503).json({
+      questions,
+      total: 0,
+      cached,
+      basedOnPDF: false,
+      error: errorMessage,
+    })
+  }
+
+  return res.status(200).json({
+    questions,
+    total: questions.length,
+    cached,
+    basedOnPDF: true,
+  })
+}
+
 async function getBook(bookId: string) {
   const book = await Book.findOne({
     _id: bookId,
@@ -153,11 +219,7 @@ router.get(
       await saveCache(bookId, "summary", summary)
     }
 
-    res.json({
-      summary,
-      cached: false,
-      basedOnPDF: summary.basedOnPDF,
-    })
+    return respondWithSummary(res, summary, false)
   }),
 )
 
@@ -188,13 +250,12 @@ router.get(
       await saveCache(bookId, "mcq", questions)
     }
 
-    res.json({
+    return respondWithMcq(
+      res,
       questions,
-      total: questions.length,
-      cached: false,
-      basedOnPDF: questions.length > 0,
-      error: questions.length === 0 ? "Could not generate quiz questions from the PDF content." : undefined,
-    })
+      false,
+      "Could not generate quiz questions from the PDF content.",
+    )
   }),
 )
 
@@ -223,11 +284,7 @@ router.get(
       await saveCache(bookId, "keypoints", keyPoints)
     }
 
-    res.json({
-      keyPoints,
-      cached: false,
-      basedOnPDF: keyPoints.basedOnPDF,
-    })
+    return respondWithKeyPoints(res, keyPoints, false)
   }),
 )
 
