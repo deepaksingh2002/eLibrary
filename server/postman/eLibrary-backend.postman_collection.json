@@ -1,0 +1,1598 @@
+{
+  "info": {
+    "_postman_id": "7d4f8d2a-9f30-4c22-8e8b-1b1e4a1c2d7e",
+    "name": "eLibrary Backend",
+    "description": "Import this collection into Postman to exercise the full eLibrary backend. Replace the variables in the collection with your own host, tokens, and IDs. File upload requests are included with placeholder file fields that you should attach manually in Postman.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "bookId",
+      "value": ""
+    },
+    {
+      "key": "reviewId",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "bookmarkId",
+      "value": ""
+    },
+    {
+      "key": "googleId",
+      "value": ""
+    },
+    {
+      "key": "cronSecret",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Public health check."
+          }
+        },
+        {
+          "name": "Ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ready",
+              "host": ["{{baseUrl}}"],
+              "path": ["ready"]
+            },
+            "description": "Public readiness check."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman User\",\n  \"email\": \"postman@example.com\",\n  \"password\": \"Password123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Create a new user account."
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"postman@example.com\",\n  \"password\": \"Password123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Log in and capture access and refresh tokens."
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "refreshToken={{refreshToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "refresh"]
+            },
+            "description": "Rotate the refresh token cookie and receive a new access token."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "refreshToken={{refreshToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            },
+            "description": "Clear the refresh token cookie and invalidate the current session."
+          }
+        },
+        {
+          "name": "Logout All Devices",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout-all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout-all"]
+            },
+            "description": "Invalidate all refresh tokens for the authenticated user."
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Get the current authenticated user."
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"postman@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/forgot-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "forgot-password"]
+            },
+            "description": "Request a password reset email."
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"reset-token-from-email\",\n  \"newPassword\": \"NewPassword123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "reset-password"]
+            },
+            "description": "Reset the password with a valid reset token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Books",
+      "item": [
+        {
+          "name": "Search Books",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/search?q=react",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "react"
+                }
+              ]
+            },
+            "description": "Search books with optional auth."
+          }
+        },
+        {
+          "name": "Autocomplete Books",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/autocomplete?q=algo",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books", "autocomplete"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "algo"
+                }
+              ]
+            },
+            "description": "Autocomplete book titles with optional auth."
+          }
+        },
+        {
+          "name": "List Books",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "List books with optional filters and optional auth."
+          }
+        },
+        {
+          "name": "Get Book By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books", "{{bookId}}"]
+            },
+            "description": "Fetch a single book by id."
+          }
+        },
+        {
+          "name": "Book Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}/summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books", "{{bookId}}", "summary"]
+            },
+            "description": "Generate a book summary for the authenticated user."
+          }
+        },
+        {
+          "name": "Download Book",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}/download",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books", "{{bookId}}", "download"]
+            },
+            "description": "Get a book download link for the authenticated user."
+          }
+        },
+        {
+          "name": "Stream PDF",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}/pdf",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books", "{{bookId}}", "pdf"]
+            },
+            "description": "Stream the PDF for reading."
+          }
+        },
+        {
+          "name": "Create Book",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "title",
+                  "value": "Postman Sample Book",
+                  "type": "text"
+                },
+                {
+                  "key": "author",
+                  "value": "Postman Author",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Sample description for a multipart create request.",
+                  "type": "text"
+                },
+                {
+                  "key": "genre",
+                  "value": "Technology",
+                  "type": "text"
+                },
+                {
+                  "key": "language",
+                  "value": "en",
+                  "type": "text"
+                },
+                {
+                  "key": "tags",
+                  "value": "[\"sample\",\"postman\"]",
+                  "type": "text"
+                },
+                {
+                  "key": "status",
+                  "value": "draft",
+                  "type": "text"
+                },
+                {
+                  "key": "cover",
+                  "type": "file",
+                  "src": ""
+                },
+                {
+                  "key": "pdf",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/books",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books"]
+            },
+            "description": "Create a book. Attach cover/pdf files manually in Postman."
+          }
+        },
+        {
+          "name": "Update Book",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "title",
+                  "value": "Updated Book Title",
+                  "type": "text"
+                },
+                {
+                  "key": "author",
+                  "value": "Updated Author",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Updated description.",
+                  "type": "text"
+                },
+                {
+                  "key": "genre",
+                  "value": "Technology",
+                  "type": "text"
+                },
+                {
+                  "key": "language",
+                  "value": "en",
+                  "type": "text"
+                },
+                {
+                  "key": "tags",
+                  "value": "[\"updated\"]",
+                  "type": "text"
+                },
+                {
+                  "key": "cover",
+                  "type": "file",
+                  "src": ""
+                },
+                {
+                  "key": "pdf",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books", "{{bookId}}"]
+            },
+            "description": "Update a book. Attach new files manually if needed."
+          }
+        },
+        {
+          "name": "Delete Book",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books", "{{bookId}}"]
+            },
+            "description": "Soft delete a book."
+          }
+        },
+        {
+          "name": "Permanent Delete Book",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}/permanent",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books", "{{bookId}}", "permanent"]
+            },
+            "description": "Permanently delete a book."
+          }
+        },
+        {
+          "name": "Toggle Book Status",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}/toggle-status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books", "{{bookId}}", "toggle-status"]
+            },
+            "description": "Toggle a book between draft and published."
+          }
+        },
+        {
+          "name": "Resolve PDF",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}/resolve-pdf",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "books", "{{bookId}}", "resolve-pdf"]
+            },
+            "description": "Re-resolve a book PDF for admin use."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Progress",
+      "item": [
+        {
+          "name": "Update Progress",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"progress\": 50,\n  \"sessionMinutes\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/progress/{{bookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "progress", "{{bookId}}"]
+            },
+            "description": "Update the reading progress for a book."
+          }
+        },
+        {
+          "name": "Get Progress",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/progress/{{bookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "progress", "{{bookId}}"]
+            },
+            "description": "Get a user's progress for a book."
+          }
+        },
+        {
+          "name": "List Progress",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/progress?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "progress"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "List reading progress items."
+          }
+        },
+        {
+          "name": "Continue Reading Shelf",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/progress/shelf/continue-reading",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "progress", "shelf", "continue-reading"]
+            },
+            "description": "Get the continue-reading shelf."
+          }
+        },
+        {
+          "name": "Completed Shelf",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/progress/shelf/completed",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "progress", "shelf", "completed"]
+            },
+            "description": "Get the completed shelf."
+          }
+        },
+        {
+          "name": "Add Bookmark",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page\": 12,\n  \"note\": \"Important section\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/progress/{{bookId}}/bookmarks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "progress", "{{bookId}}", "bookmarks"]
+            },
+            "description": "Add a bookmark to a book."
+          }
+        },
+        {
+          "name": "List Bookmarks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/progress/{{bookId}}/bookmarks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "progress", "{{bookId}}", "bookmarks"]
+            },
+            "description": "List bookmarks for a book."
+          }
+        },
+        {
+          "name": "Update Bookmark",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Updated bookmark note\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/progress/{{bookId}}/bookmarks/{{bookmarkId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "progress", "{{bookId}}", "bookmarks", "{{bookmarkId}}"]
+            },
+            "description": "Update a bookmark."
+          }
+        },
+        {
+          "name": "Delete Bookmark",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/progress/{{bookId}}/bookmarks/{{bookmarkId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "progress", "{{bookId}}", "bookmarks", "{{bookmarkId}}"]
+            },
+            "description": "Delete a bookmark."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reviews",
+      "item": [
+        {
+          "name": "My Reviews",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/my",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "my"]
+            },
+            "description": "Get my reviews."
+          }
+        },
+        {
+          "name": "Flagged Reviews",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/flagged?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "flagged"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Admin-only flagged reviews list."
+          }
+        },
+        {
+          "name": "Book Reviews",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/book/{{bookId}}?page=1&limit=10&sort=helpful",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "book", "{{bookId}}"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "sort",
+                  "value": "helpful"
+                }
+              ]
+            },
+            "description": "Get reviews for a single book."
+          }
+        },
+        {
+          "name": "Review Distribution",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/book/{{bookId}}/distribution",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "book", "{{bookId}}", "distribution"]
+            },
+            "description": "Get rating distribution for a book."
+          }
+        },
+        {
+          "name": "Create Review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookId\": \"{{bookId}}\",\n  \"rating\": 5,\n  \"title\": \"Great read\",\n  \"body\": \"This book was clear and useful.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews"]
+            },
+            "description": "Create a review."
+          }
+        },
+        {
+          "name": "Update Review",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 4,\n  \"title\": \"Updated review\",\n  \"body\": \"Updated feedback\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/{{reviewId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "{{reviewId}}"]
+            },
+            "description": "Update a review you own."
+          }
+        },
+        {
+          "name": "Delete Review",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/{{reviewId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "{{reviewId}}"]
+            },
+            "description": "Delete a review."
+          }
+        },
+        {
+          "name": "Helpful Vote",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/{{reviewId}}/helpful",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "{{reviewId}}", "helpful"]
+            },
+            "description": "Toggle a helpful vote on a review."
+          }
+        },
+        {
+          "name": "Flag / Unflag Review",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"flag\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/{{reviewId}}/flag",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "{{reviewId}}", "flag"]
+            },
+            "description": "Admin-only moderation action for a review."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Recommendations",
+      "item": [
+        {
+          "name": "Get Recommendations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/recommendations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recommendations"]
+            },
+            "description": "Get recommendation shelf for the current user."
+          }
+        },
+        {
+          "name": "Similar Books",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/recommendations/similar/{{bookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recommendations", "similar", "{{bookId}}"]
+            },
+            "description": "Get similar books for a title."
+          }
+        },
+        {
+          "name": "Explain Recommendation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/recommendations/{{bookId}}/explain",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recommendations", "{{bookId}}", "explain"]
+            },
+            "description": "Explain why a book is recommended."
+          }
+        },
+        {
+          "name": "Refresh Recommendations",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/recommendations/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recommendations", "refresh"]
+            },
+            "description": "Manually refresh recommendations."
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI Study",
+      "item": [
+        {
+          "name": "AI Study Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ai-study/{{bookId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai-study", "{{bookId}}", "status"]
+            },
+            "description": "Check whether a book PDF is ready for AI study generation."
+          }
+        },
+        {
+          "name": "AI Study Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ai-study/{{bookId}}/summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai-study", "{{bookId}}", "summary"]
+            },
+            "description": "Generate the AI study summary for a book."
+          }
+        },
+        {
+          "name": "AI Study MCQ",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ai-study/{{bookId}}/mcq?count=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai-study", "{{bookId}}", "mcq"],
+              "query": [
+                {
+                  "key": "count",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Generate multiple-choice questions from the PDF content."
+          }
+        },
+        {
+          "name": "AI Study Key Points",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ai-study/{{bookId}}/key-points",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai-study", "{{bookId}}", "key-points"]
+            },
+            "description": "Generate key points and revision notes from the PDF content."
+          }
+        },
+        {
+          "name": "Clear AI Study Cache",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ai-study/{{bookId}}/cache",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai-study", "{{bookId}}", "cache"]
+            },
+            "description": "Admin-only cache clear for a book's AI study results."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "dashboard"]
+            },
+            "description": "Get the authenticated user's dashboard data."
+          }
+        },
+        {
+          "name": "Update Monthly Goal",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monthlyGoal\": 12\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/goal",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "goal"]
+            },
+            "description": "Update the authenticated user's monthly goal."
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Name\",\n  \"avatar\": \"https://example.com/avatar.png\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "profile"]
+            },
+            "description": "Update the authenticated user's profile."
+          }
+        },
+        {
+          "name": "Update Preferences",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"genres\": [\"Technology\", \"Programming\"],\n  \"language\": \"en\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/preferences",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "preferences"]
+            },
+            "description": "Update the authenticated user's genre and language preferences."
+          }
+        },
+        {
+          "name": "Update Avatar",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "cover",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/avatar",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "avatar"]
+            },
+            "description": "Upload a new avatar image. Attach the file manually in Postman."
+          }
+        },
+        {
+          "name": "User Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "stats"]
+            },
+            "description": "Get the authenticated user's reading stats."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Trigger Recommendations Cron",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-cron-secret",
+                "value": "{{cronSecret}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/stats/trigger-recommendations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "stats", "trigger-recommendations"]
+            },
+            "description": "Trigger recommendation computation using the cron secret."
+          }
+        },
+        {
+          "name": "KPIs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/stats/kpis",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "stats", "kpis"]
+            },
+            "description": "Admin KPI dashboard metrics."
+          }
+        },
+        {
+          "name": "Downloads Trend",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/stats/downloads-trend?period=30d",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "stats", "downloads-trend"],
+              "query": [
+                {
+                  "key": "period",
+                  "value": "30d"
+                }
+              ]
+            },
+            "description": "Download trend for 7d, 30d, 90d, or 12m."
+          }
+        },
+        {
+          "name": "Top Books",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/stats/top-books?limit=10&metric=downloads",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "stats", "top-books"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "metric",
+                  "value": "downloads"
+                }
+              ]
+            },
+            "description": "Top books by downloads, rating, or reviews."
+          }
+        },
+        {
+          "name": "Genre Distribution",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/stats/genre-distribution",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "stats", "genre-distribution"]
+            },
+            "description": "Genre distribution metrics."
+          }
+        },
+        {
+          "name": "User Growth",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/stats/user-growth?period=12m",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "stats", "user-growth"],
+              "query": [
+                {
+                  "key": "period",
+                  "value": "12m"
+                }
+              ]
+            },
+            "description": "User growth metrics."
+          }
+        },
+        {
+          "name": "Activity Breakdown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/stats/activity-breakdown",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "stats", "activity-breakdown"]
+            },
+            "description": "Activity breakdown for the last 30 days."
+          }
+        },
+        {
+          "name": "Books",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/books?page=1&limit=10&sort=newest",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "books"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "sort",
+                  "value": "newest"
+                }
+              ]
+            },
+            "description": "List books for admin management."
+          }
+        },
+        {
+          "name": "Toggle Book Status",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/books/{{bookId}}/toggle-status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "books", "{{bookId}}", "toggle-status"]
+            },
+            "description": "Toggle a book's published/draft status."
+          }
+        },
+        {
+          "name": "Bulk Import Books",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"books\": [\n    {\n      \"title\": \"Imported Book\",\n      \"author\": \"Imported Author\",\n      \"genre\": \"Technology\",\n      \"pdfUrl\": \"https://example.com/book.pdf\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/books/bulk-import",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "books", "bulk-import"]
+            },
+            "description": "Bulk import books from JSON payload."
+          }
+        },
+        {
+          "name": "Export Books CSV",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/export/books?format=csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "export", "books"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "csv"
+                }
+              ]
+            },
+            "description": "Export books as CSV or JSON."
+          }
+        },
+        {
+          "name": "Export Users CSV",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/export/users?format=csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "export", "users"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "csv"
+                }
+              ]
+            },
+            "description": "Export users as CSV or JSON."
+          }
+        },
+        {
+          "name": "Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users?page=1&limit=10&sort=newest",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "sort",
+                  "value": "newest"
+                }
+              ]
+            },
+            "description": "List users for admin management."
+          }
+        },
+        {
+          "name": "Update User Role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"user\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{userId}}/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}", "role"]
+            },
+            "description": "Update a user's role."
+          }
+        },
+        {
+          "name": "Delete User",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}"]
+            },
+            "description": "Deactivate a user account."
+          }
+        },
+        {
+          "name": "User Activity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{userId}}/activity?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}", "activity"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Inspect a user's activity log."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Smart Import",
+      "item": [
+        {
+          "name": "Search Books Online",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/smart-import/search?q=react&limit=12",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "smart-import", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "react"
+                },
+                {
+                  "key": "limit",
+                  "value": "12"
+                }
+              ]
+            },
+            "description": "Search external book sources."
+          }
+        },
+        {
+          "name": "Smart Import Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/smart-import/details/{{googleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "smart-import", "details", "{{googleId}}"]
+            },
+            "description": "Fetch detailed metadata for a Google Books item."
+          }
+        },
+        {
+          "name": "Add Smart Import Book",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Smart Imported Book\",\n  \"author\": \"External Author\",\n  \"description\": \"External book description\",\n  \"genre\": \"Technology\",\n  \"language\": \"en\",\n  \"tags\": [\"ai\", \"backend\"],\n  \"coverUrl\": \"https://example.com/cover.jpg\",\n  \"pdfUrl\": \"https://example.com/book.pdf\",\n  \"pageCount\": 250,\n  \"publishedYear\": \"2024\",\n  \"publisher\": \"Example Publisher\",\n  \"isbn\": \"1234567890\",\n  \"externalId\": \"google-book-id\",\n  \"source\": \"google_books\",\n  \"status\": \"draft\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/smart-import/add",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "smart-import", "add"]
+            },
+            "description": "Add a book from an external source."
+          }
+        },
+        {
+          "name": "Bulk Smart Import",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"books\": [\n    {\n      \"title\": \"Bulk Imported Book\",\n      \"author\": \"External Author\",\n      \"description\": \"Bulk import example\",\n      \"genre\": \"Technology\",\n      \"language\": \"en\",\n      \"tags\": [\"bulk\"],\n      \"coverUrl\": \"https://example.com/cover.jpg\",\n      \"pdfUrl\": \"https://example.com/book.pdf\",\n      \"pageCount\": 180,\n      \"publishedYear\": \"2023\",\n      \"publisher\": \"Example Publisher\",\n      \"isbn\": \"9999999999\",\n      \"externalId\": \"bulk-book-id\",\n      \"source\": \"bulk_json\",\n      \"status\": \"draft\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/smart-import/add-batch",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "smart-import", "add-batch"]
+            },
+            "description": "Bulk add external books."
+          }
+        }
+      ]
+    }
+  ]
+}
