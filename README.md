@@ -69,10 +69,16 @@ JWT_REFRESH_SECRET=your_refresh_secret
 FRONTEND_URL=http://localhost:3000
 CORS_ORIGINS=http://localhost:3000
 GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.0-flash
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 CLOUDINARY_CLOUD_NAME=your_cloudinary_name
 CLOUDINARY_API_KEY=your_cloudinary_key
 CLOUDINARY_API_SECRET=your_cloudinary_secret
 REDIS_URL=redis://127.0.0.1:6379
+PDF_OCR_DPI=220
+PDF_OCR_LANG=eng
+PDF_TEXT_MIN_WORDS=120
+PDF_TEXT_MIN_PAGE_WORDS=18
 ```
 
 If you do not want to run Redis locally, you can omit `REDIS_URL`. The server will still start and AI study jobs will execute inline.
