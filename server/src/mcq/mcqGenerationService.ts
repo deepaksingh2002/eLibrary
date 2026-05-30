@@ -75,6 +75,14 @@ async function generateOnce(params: {
     num_questions: String(params.count),
     chapter_text: params.chapterText,
   })
+  // Debug logging: record the exact prompts sent to the model for troubleshooting
+  try {
+    console.debug("[MCQ] System prompt:", MCQ_GENERATION_SYSTEM_PROMPT)
+    // limit human prompt length in logs to avoid huge output
+    console.debug("[MCQ] Human prompt (truncated 2000 chars):", humanPrompt.slice(0, 2000))
+  } catch (e) {
+    // ignore logging failures
+  }
 
   const response = await params.model.invoke([
     ["system", MCQ_GENERATION_SYSTEM_PROMPT],
