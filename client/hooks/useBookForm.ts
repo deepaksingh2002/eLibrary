@@ -73,6 +73,8 @@ function getErrorMessage(error: unknown, fallback: string): string {
 export function useBookForm({ bookId, initialData }: UseBookFormOptions = {}) {
   const router = useRouter();
   const isEditMode = Boolean(bookId);
+  const initialDataSignature = JSON.stringify(initialData ?? null);
+  const resolvedInitialData = initialData ?? null;
 
   const [values, setValues] = useState<BookFormValues>({
     ...EMPTY_FORM,
@@ -82,13 +84,13 @@ export function useBookForm({ bookId, initialData }: UseBookFormOptions = {}) {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
-    if (initialData) {
+    if (resolvedInitialData) {
       setValues((current) => ({
         ...current,
-        ...initialData
+        ...resolvedInitialData
       }));
     }
-  }, [JSON.stringify(initialData)]);
+  }, [resolvedInitialData, initialDataSignature]);
 
   function setField<K extends keyof BookFormValues>(field: K, value: BookFormValues[K]) {
     setValues((current) => ({

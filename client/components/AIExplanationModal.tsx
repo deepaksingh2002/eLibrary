@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import type { Review } from "../types";
-import { useGetBookSummaryQuery, useGetBookExplanationQuery } from "../store/services/api";
+import { useGetBookExplanationQuery, useGetAiStudySummaryQuery } from "../store/services/api";
+import BookSummary from "./reader/BookSummary";
 
 interface AIExplanationModalProps {
   bookId: string | null;
@@ -19,9 +20,6 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
   bookTitle,
   onClose,
   mode = "explanation",
-  readerReviews = [],
-  averageRating,
-  totalReviews,
 }) => {
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -31,7 +29,7 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
 
   const isSummary = mode === "summary";
 
-  const summaryQuery = useGetBookSummaryQuery(bookId ?? "", {
+  const studySummaryQuery = useGetAiStudySummaryQuery({ bookId: bookId ?? "" }, {
     skip: !(isHydrated && !!bookId && isSummary),
   });
 
@@ -39,46 +37,73 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
     skip: !(isHydrated && !!bookId && !isSummary),
   });
 
-  const data = isSummary ? summaryQuery.data : explanationQuery.data;
-  const isLoading = isSummary ? summaryQuery.isLoading : explanationQuery.isLoading;
-  const isError = isSummary ? summaryQuery.isError : explanationQuery.isError;
-  const error = isSummary ? summaryQuery.error : explanationQuery.error;
+  const data = isSummary ? studySummaryQuery.data : explanationQuery.data;
+  const isLoading = isSummary ? studySummaryQuery.isLoading : explanationQuery.isLoading;
+  const isError = isSummary ? studySummaryQuery.isError : explanationQuery.isError;
+  const error = isSummary ? studySummaryQuery.error : explanationQuery.error;
   const summaryText = data && "summary" in data ? data.summary : undefined;
   const explanationText = data && "explanation" in data ? data.explanation : undefined;
   const keyPoints = data && "keyPoints" in data ? data.keyPoints : undefined;
   const isAIGenerated = Boolean(data && "isAIGenerated" in data && data.isAIGenerated);
-  const apiReaderNotes = isSummary && data && "readerNotes" in data ? data.readerNotes : undefined;
-  const apiReaderNotesGenerated = Boolean(data && "readerNotesAIGenerated" in data && data.readerNotesAIGenerated);
-
-  const readerNotes = React.useMemo(() => {
-    if (Array.isArray(apiReaderNotes) && apiReaderNotes.length > 0) {
-      return apiReaderNotes.slice(0, 3);
-    }
-
-    if (!readerReviews.length) return [];
-
-    const notes: string[] = [];
-    if (typeof averageRating === "number" && typeof totalReviews === "number") {
-      notes.push(`Readers rate this book ${averageRating.toFixed(1)}/5 across ${totalReviews} review${totalReviews === 1 ? "" : "s"}.`);
-    }
-
-    const sortedReviews = [...readerReviews].sort((left, right) => right.rating - left.rating);
-    const topPraise = sortedReviews.find((review) => review.title || review.body);
-    if (topPraise) {
-      const praiseText = [topPraise.title, topPraise.body].filter(Boolean).join(" - ");
-      notes.push(`A common positive note: ${praiseText.slice(0, 180)}${praiseText.length > 180 ? "..." : ""}`);
-    }
-
-    const lowerRated = sortedReviews.find((review) => review.rating <= 3 && (review.title || review.body));
-    if (lowerRated) {
-      const concernText = [lowerRated.title, lowerRated.body].filter(Boolean).join(" - ");
-      notes.push(`Some readers also mention: ${concernText.slice(0, 180)}${concernText.length > 180 ? "..." : ""}`);
-    }
-
-    return notes.slice(0, 3);
-  }, [apiReaderNotes, averageRating, readerReviews, totalReviews]);
+  const summaryModel = isSummary ? studySummaryQuery.data?.summary || null : null;
+  const renderedText = typeof summaryText === "string"
+    ? summaryText
+    : summaryText && typeof summaryText === "object" && "overview" in summaryText
+      ? summaryText.overview
+      : explanationText || ""
 
   if (!bookId) return null;
+
+  if (isSummary) {
+    return (
+      <div
+        className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+        onClick={onClose}
+        aria-labelledby="ai-modal-title"
+      >
+        <div
+          className="w-full max-w-5xl rounded-2xl bg-slate-100 p-4 shadow-2xl max-h-[90vh] overflow-y-auto"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="mb-4 flex justify-between items-start gap-4">
+            <div>
+              <h2 id="ai-modal-title" className="font-bold text-xl text-gray-900">
+                AI Summary
+              </h2>
+              <p className="text-sm text-gray-400 line-clamp-2 mt-1">for {bookTitle}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors text-2xl font-bold leading-none"
+              aria-label="Close modal"
+            >
+              x
+            </button>
+          </div>
+
+          <BookSummary
+            summary={summaryModel}
+            isLoading={isLoading}
+          />
+
+          <div className="flex gap-3 mt-6 pt-4 border-t border-gray-200">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 text-gray-700 font-medium border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              Close
+            </button>
+            <a
+              href={`/book/${bookId}`}
+              className="flex-1 bg-blue-600 text-white font-medium py-2.5 rounded-xl hover:bg-blue-700 transition-colors text-center"
+            >
+              Read Book
+            </a>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -106,7 +131,7 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
           </button>
         </div>
 
-        <div className="min-h-[100px] my-6">
+        <div className="min-h-25 my-6">
           {isLoading ? (
             <div className="space-y-3">
               <div className="animate-pulse space-y-2">
@@ -137,35 +162,21 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
                 </p>
               )}
             </div>
-          ) : summaryText || explanationText ? (
+          ) : renderedText ? (
             <div>
               <p className="text-gray-800 text-base leading-relaxed mb-4 whitespace-pre-line">
-                {summaryText || explanationText}
+                {renderedText}
               </p>
 
               {Array.isArray(keyPoints) && keyPoints.length > 0 && (
                 <ul className="space-y-2 mb-4">
                   {keyPoints.map((point: string, index: number) => (
                     <li key={`${point}-${index}`} className="flex gap-2 text-sm text-gray-700">
-                      <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-500" />
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
                       <span>{point}</span>
                     </li>
                   ))}
                 </ul>
-              )}
-
-              {isSummary && readerNotes.length > 0 && (
-                <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="mb-3 text-sm font-semibold text-slate-900">What readers on the internet think</p>
-                  <ul className="space-y-2">
-                    {readerNotes.map((note) => (
-                      <li key={note} className="flex gap-2 text-sm leading-relaxed text-slate-700">
-                        <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-emerald-500" />
-                        <span>{note}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
               )}
 
               <div className="mt-4 flex items-center gap-2 flex-wrap">
@@ -175,11 +186,7 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
                   </span>
                 ) : (
                   <span className="text-xs text-blue-600 flex items-center gap-1 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-200">
-                    {isSummary
-                      ? apiReaderNotesGenerated
-                        ? "Live web reader notes included"
-                        : "AI summary + web reader notes"
-                      : "Based on your reading patterns"}
+                    {isSummary ? "AI summary from the PDF" : "Based on your reading patterns"}
                   </span>
                 )}
               </div>
@@ -202,7 +209,7 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
             href={`/book/${bookId}`}
             className="flex-1 bg-blue-600 text-white font-medium py-2.5 rounded-xl hover:bg-blue-700 transition-colors text-center"
           >
-            View Book
+            Read Book
           </a>
         </div>
       </div>

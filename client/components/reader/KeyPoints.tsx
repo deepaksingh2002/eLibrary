@@ -6,12 +6,14 @@ interface Props {
   data: KeyPointsData | null
   isLoading: boolean
   basedOnPDF: boolean
+  selectedChapterLabel?: string
 }
 
 type Section = "chapters" | "glossary" | "takeaways" | "exam" | "interview"
 
-export default function KeyPoints({ data, isLoading, basedOnPDF }: Props) {
+export default function KeyPoints({ data, isLoading, basedOnPDF, selectedChapterLabel }: Props) {
   const [active, setActive] = useState<Section>("chapters")
+  const chapterLabel = selectedChapterLabel || "All chapters"
 
   if (isLoading) {
     return (
@@ -62,12 +64,28 @@ export default function KeyPoints({ data, isLoading, basedOnPDF }: Props) {
         <span>{basedOnPDF ? "Extracted from actual PDF content" : "Based on book metadata (PDF unavailable)"}</span>
       </div>
 
+      <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">
+            Chapter scope: {chapterLabel}
+          </span>
+          <span className={`inline-flex items-center rounded-full px-2.5 py-1 ${basedOnPDF ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+            {basedOnPDF ? "OCR-cleaned PDF context" : "Metadata fallback context"}
+          </span>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
+          {basedOnPDF
+            ? "Key points are extracted from OCR-cleaned PDF content and organized to stay inside the selected chapter scope."
+            : "Key points are derived from book metadata until a PDF-backed extraction is available."}
+        </p>
+      </div>
+
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
         {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setActive(t.key)}
-            className={`flex flex-shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold whitespace-nowrap transition-all ${active === t.key ? "border-blue-600 bg-blue-600 text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"}`}
+            className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold whitespace-nowrap transition-all ${active === t.key ? "border-blue-600 bg-blue-600 text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"}`}
           >
             <span>{t.icon}</span>
             {t.label}
@@ -94,7 +112,7 @@ export default function KeyPoints({ data, isLoading, basedOnPDF }: Props) {
                 <ul className="space-y-1.5 ml-2">
                   {ch.points.map((pt, pi) => (
                     <li key={pi} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
-                      <span className="mt-1.5 flex-shrink-0 text-xs text-blue-400">
+                      <span className="mt-1.5 shrink-0 text-xs text-blue-400">
                         •
                       </span>
                       {pt}
@@ -118,7 +136,7 @@ export default function KeyPoints({ data, isLoading, basedOnPDF }: Props) {
               key={i}
               className="flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50 px-3 py-3 dark:border-amber-500/20 dark:bg-amber-500/10"
             >
-              <span className="flex-shrink-0 text-sm font-bold text-amber-500">
+                <span className="shrink-0 text-sm font-bold text-amber-500">
                 {i + 1}
               </span>
               <p className="text-sm text-amber-900 dark:text-amber-50">{t}</p>
@@ -154,7 +172,7 @@ export default function KeyPoints({ data, isLoading, basedOnPDF }: Props) {
                 key={i}
                 className="flex items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-3 dark:border-indigo-500/20 dark:bg-indigo-500/10"
               >
-                <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-indigo-500 text-xs font-bold text-white">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-xs font-bold text-white">
                   {i + 1}
                 </span>
                 <p className="text-sm text-indigo-900 dark:text-indigo-50">{tip}</p>
@@ -186,7 +204,7 @@ export default function KeyPoints({ data, isLoading, basedOnPDF }: Props) {
                 key={i}
                 className="flex items-start gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-3 dark:border-emerald-500/20 dark:bg-emerald-500/10"
               >
-                <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">
                   {i + 1}
                 </span>
                 <p className="text-sm text-emerald-900 dark:text-emerald-50">{topic}</p>

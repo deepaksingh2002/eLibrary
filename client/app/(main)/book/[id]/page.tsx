@@ -1,10 +1,6 @@
 import type { Metadata } from "next";
 import BookDetailClient from "./_BookDetailClient";
 
-interface Props {
-  params: { id: string };
-}
-
 export async function generateMetadata(props: any): Promise<Metadata> {
   const propsResolved = await props;
   const paramsResolved = await propsResolved.params;

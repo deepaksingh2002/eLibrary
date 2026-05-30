@@ -1,7 +1,6 @@
 "use client";
 
 import { useHydration } from "./useHydration";
-import { useEffect, useState } from "react";
 import { useAuthStore } from "../store/authStore";
 import { Recommendation } from "../types";
 import { toast } from "../components/ui/Toast";

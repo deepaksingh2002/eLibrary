@@ -3,7 +3,6 @@
 import { useHydration } from "./useHydration";
 import { useEffect, useRef } from "react";
 import { useAuthStore } from "../store/authStore";
-import { ReadingProgress } from "../types";
 import { toast } from "../components/ui/Toast";
 import {
   useGetReadingProgressQuery,

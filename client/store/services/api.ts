@@ -17,7 +17,6 @@ import type {
   ReadingProgress,
   ReadingSession,
   ReviewDistribution,
-  AdminBook,
   User,
 } from "../../types";
 
@@ -210,6 +209,27 @@ interface AiStudySummaryResponse {
   basedOnPDF?: boolean;
 }
 
+interface AiStudyStudyArgs {
+  bookId: string;
+  fresh?: number;
+}
+
+interface ChapterRange {
+  number: number;
+  title: string;
+  startPage: number;
+  endPage: number;
+}
+
+interface AiStudyChapterIndexResponse {
+  chapterIndex?: {
+    chapters: ChapterRange[];
+    basedOnPDF: boolean;
+  };
+  basedOnPDF?: boolean;
+  error?: string;
+}
+
 interface AiStudyMcqResponse {
   questions?: Array<{
     id: number;
@@ -221,7 +241,15 @@ interface AiStudyMcqResponse {
   total?: number;
   cached?: boolean;
   basedOnPDF?: boolean;
+  fallbackUsed?: boolean;
   error?: string;
+}
+
+interface AiStudyMcqArgs {
+  bookId: string;
+  count?: number;
+  fresh?: number;
+  chapter?: string;
 }
 
 interface StudyKeyPoints {
@@ -483,6 +511,19 @@ export const api = createApi({
       query: () => ({ url: "/api/admin/books/repair-ai-statuses", method: "POST" }),
       invalidatesTags: ["Admin", "Books"],
     }),
+    reindexAiVectors: builder.mutation<
+      ApiResponse<{
+        message: string;
+        scanned: number;
+        succeeded: number;
+        failed: number;
+        skipped: Array<{ id: string; title: string; reason: string }>;
+      }>,
+      void
+    >({
+      query: () => ({ url: "/api/admin/books/reindex-vectors", method: "POST" }),
+      invalidatesTags: ["Admin", "Books"],
+    }),
     toggleBookStatus: builder.mutation<ApiResponse<MessageResponse>, string>({
       query: (bookId) => ({ url: `/api/books/${bookId}/toggle-status`, method: "PATCH" }),
     }),
@@ -512,8 +553,8 @@ export const api = createApi({
     getBookSummary: builder.query<BookSummaryResponse, string>({
       query: (bookId) => `/api/books/${bookId}/summary`,
     }),
-    getAiStudySummary: builder.query<AiStudySummaryResponse, string>({
-      query: (bookId) => `/api/ai-study/${bookId}/summary`,
+    getAiStudySummary: builder.query<AiStudySummaryResponse, AiStudyStudyArgs>({
+      query: ({ bookId, fresh }) => `/api/ai-study/${bookId}/summary${fresh ? `?fresh=${fresh}` : ""}`,
     }),
     getAiStudyStatus: builder.query<{
       title?: string;
@@ -525,11 +566,24 @@ export const api = createApi({
     }, string>({
       query: (bookId) => `/api/ai-study/${bookId}/status`,
     }),
-    getAiStudyMcq: builder.query<AiStudyMcqResponse, string>({
-      query: (bookId) => `/api/ai-study/${bookId}/mcq?count=10`,
+    getAiStudyMcq: builder.query<AiStudyMcqResponse, AiStudyMcqArgs>({
+      query: ({ bookId, count = 10, fresh, chapter }) => {
+        const params = new URLSearchParams({ count: String(count) })
+        if (typeof fresh === "number") {
+          params.set("fresh", String(fresh))
+        }
+        if (chapter) {
+          params.set("chapter", chapter)
+        }
+
+        return `/api/ai-study/${bookId}/mcq?${params.toString()}`
+      },
     }),
-    getAiStudyKeyPoints: builder.query<AiStudyKeyPointsResponse, string>({
-      query: (bookId) => `/api/ai-study/${bookId}/key-points`,
+    getAiStudyKeyPoints: builder.query<AiStudyKeyPointsResponse, AiStudyStudyArgs>({
+      query: ({ bookId, fresh }) => `/api/ai-study/${bookId}/key-points${fresh ? `?fresh=${fresh}` : ""}`,
+    }),
+    getAiStudyChapterIndex: builder.query<AiStudyChapterIndexResponse, string>({
+      query: (bookId) => `/api/ai-study/${bookId}/chapter-index`,
     }),
     getReadingProgress: builder.query<ReadingProgressSnapshot, string>({
       query: (bookId) => `/api/progress/${bookId}`,
@@ -659,6 +713,7 @@ export const {
   useGetAiStudyMcqQuery,
   useGetAiStudyStatusQuery,
   useGetAiStudyKeyPointsQuery,
+  useGetAiStudyChapterIndexQuery,
   useGetReadingProgressQuery,
   useUpdateReadingProgressMutation,
   useAddBookmarkMutation,

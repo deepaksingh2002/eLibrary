@@ -8,16 +8,12 @@ import {
 } from "recharts";
 import { api } from "../../../store/services/api";
 import { getApiErrorMessage } from "../../../lib/utils";
-import { KPIStats, TrendPoint, GenreDistributionItem, GrowthPoint, AdminBook } from "../../../types";
+import { TrendPoint, GenreDistributionItem, GrowthPoint, AdminBook } from "../../../types";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
 import { toast } from "../../../components/ui/Toast";
-import { useAuthStore } from "../../../store/authStore";
 
 export default function AdminDashboardPage() {
-  const [exporting, setExporting] = useState<"books" | "users" | null>(null);
-
-  const { data: kpisData, isLoading: kpisLoading } = api.useGetAdminKpisQuery();
-  const kpis = kpisData as KPIStats | undefined;
+  const [reindexing, setReindexing] = useState(false);
 
   const [trendPeriod, setTrendPeriod] = useState<"7d" | "30d" | "90d" | "12m">("30d");
   const { data: trendData, isLoading: trendLoading } = api.useGetAdminTrendQuery(trendPeriod);
@@ -31,6 +27,7 @@ export default function AdminDashboardPage() {
 
   const { data: userGrowthData, isLoading: userGrowthLoading } = api.useGetAdminUserGrowthQuery();
   const userGrowth = userGrowthData as { growth: GrowthPoint[]; period: string } | undefined;
+  const [reindexAiVectors] = api.useReindexAiVectorsMutation();
 
   const COLORS = [
     "#2563EB", "#7C3AED", "#DC2626", "#D97706",
@@ -42,39 +39,15 @@ export default function AdminDashboardPage() {
     setMounted(true);
   }, []);
 
-  const downloadCsv = async (type: "books" | "users") => {
-    setExporting(type);
+  const handleReindexVectors = async () => {
+    setReindexing(true);
     try {
-      const token = useAuthStore.getState().accessToken;
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/admin/export/${type}?format=csv`, {
-        headers: {
-          Authorization: token ? `Bearer ${token}` : "",
-        },
-      });
-
-      if (!response.ok) throw new Error("Export failed");
-
-      const contentDisposition = response.headers.get("content-disposition") || "";
-      const filenameMatch = /filename="?([^"]+)"?/i.exec(contentDisposition);
-      const fallbackName = `elibrary-${type}-${new Date().toISOString().slice(0, 10)}.csv`;
-      const filename = filenameMatch?.[1] || fallbackName;
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      link.style.display = "none";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      toast.success(`${type === "books" ? "Books" : "Users"} CSV exported`);
+      const result = await reindexAiVectors().unwrap();
+      toast.success(`Reindexed ${result.succeeded}/${result.scanned} books`);
     } catch (error) {
       toast.error(getApiErrorMessage(error));
     } finally {
-      setExporting(null);
+      setReindexing(false);
     }
   };
 
@@ -82,26 +55,35 @@ export default function AdminDashboardPage() {
     <ProtectedRoute>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <h2 className="font-bold text-gray-900">Download Trends</h2>
-        <div className="flex gap-2 bg-gray-50 p-1 rounded-full">
-          {(["7d", "30d", "90d", "12m"] as const).map((p) => (
-            <button
-              key={p}
-              className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                trendPeriod === p ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
-              }`}
-              onClick={() => setTrendPeriod(p)}
-            >
-              {p}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleReindexVectors}
+            disabled={reindexing}
+            className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {reindexing ? "Reindexing..." : "Reindex AI Vectors"}
+          </button>
+          <div className="flex gap-2 bg-gray-50 p-1 rounded-full">
+            {(["7d", "30d", "90d", "12m"] as const).map((p) => (
+              <button
+                key={p}
+                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                  trendPeriod === p ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
+                }`}
+                onClick={() => setTrendPeriod(p)}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="mt-4">
         {trendLoading ? (
-          <div className="h-[280px] w-full bg-gray-50 animate-pulse rounded-xl" />
+          <div className="h-70 w-full bg-gray-50 animate-pulse rounded-xl" />
         ) : mounted ? (
-          <div className="h-[280px] w-full" style={{ minWidth: 0, minHeight: 0 }}>
+          <div className="h-70 w-full" style={{ minWidth: 0, minHeight: 0 }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trend?.trend || []} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
@@ -128,7 +110,7 @@ export default function AdminDashboardPage() {
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="h-[280px] w-full bg-gray-50 rounded-xl" />
+            <div className="h-70 w-full bg-gray-50 rounded-xl" />
         )}
       </div>
 
@@ -136,11 +118,11 @@ export default function AdminDashboardPage() {
         <div className="bg-white border border-gray-100 rounded-xl p-6">
           <h2 className="font-bold text-gray-900 mb-6">Books by Genre</h2>
           {genresLoading ? (
-            <div className="h-[280px] w-full bg-gray-50 animate-pulse rounded-xl" />
+            <div className="h-70 w-full bg-gray-50 animate-pulse rounded-xl" />
           ) : genres?.distribution?.length === 0 ? (
-            <div className="h-[280px] flex items-center justify-center text-gray-400">No genre data available</div>
+            <div className="h-70 flex items-center justify-center text-gray-400">No genre data available</div>
           ) : (
-            <div className="h-[280px] w-full" style={{ minWidth: 0, minHeight: 0 }}>
+            <div className="h-70 w-full" style={{ minWidth: 0, minHeight: 0 }}>
                 {mounted ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -170,7 +152,7 @@ export default function AdminDashboardPage() {
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-[280px] w-full bg-gray-50 rounded-xl" />
+                  <div className="h-70 w-full bg-gray-50 rounded-xl" />
                 )}
             </div>
           )}
@@ -179,9 +161,9 @@ export default function AdminDashboardPage() {
         <div className="bg-white border border-gray-100 rounded-xl p-6">
           <h2 className="font-bold text-gray-900 mb-6">User Growth</h2>
           {userGrowthLoading ? (
-            <div className="h-[280px] w-full bg-gray-50 animate-pulse rounded-xl" />
+            <div className="h-70 w-full bg-gray-50 animate-pulse rounded-xl" />
           ) : (
-            <div className="h-[280px] w-full" style={{ minWidth: 0, minHeight: 0 }}>
+            <div className="h-70 w-full" style={{ minWidth: 0, minHeight: 0 }}>
                 {mounted ? (
                   <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={userGrowth?.growth || []} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
@@ -224,7 +206,7 @@ export default function AdminDashboardPage() {
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-[280px] w-full bg-gray-50 rounded-xl" />
+                <div className="h-70 w-full bg-gray-50 rounded-xl" />
               )}
             </div>
           )}
@@ -235,7 +217,7 @@ export default function AdminDashboardPage() {
         <h2 className="font-bold text-gray-900 mb-6">Top Books by Downloads</h2>
         
         <div className="overflow-x-auto">
-          <div className="min-w-[700px]">
+          <div className="min-w-175">
             <div className="flex gap-4 text-xs text-gray-400 uppercase tracking-wide font-medium pb-3 border-b border-gray-100 px-2">
               <div className="w-6">Rank</div>
               <div className="flex-1">Book</div>
@@ -256,7 +238,7 @@ export default function AdminDashboardPage() {
                     <div className="w-6 text-sm text-gray-400 font-mono text-center">{index + 1}</div>
                     
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="w-8 h-10 bg-gray-100 rounded overflow-hidden relative flex-shrink-0">
+                      <div className="w-8 h-10 bg-gray-100 rounded overflow-hidden relative shrink-0">
                         {book.coverUrl ? (
                           <Image
                             src={book.coverUrl}
