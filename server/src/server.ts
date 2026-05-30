@@ -10,6 +10,7 @@ import app from "./app";
 import { connectDB } from "./config/db";
 import { startRecommendationCron } from "./jobs/recommendationCron";
 import { initAIWorker } from "./services/aiQueue";
+import { validateAIConfig } from "./config/aiConfig";
 
 const PORT = Number(process.env.PORT || 5000);
 
@@ -17,6 +18,13 @@ let server: Server;
 
 const startServer = async () => {
   await connectDB();
+
+  // Validate AI provider configuration early
+  try {
+    validateAIConfig();
+  } catch (err) {
+    console.warn("[Server] AI config validation warning:", err);
+  }
 
   server = app.listen(PORT, () => {
     console.info(

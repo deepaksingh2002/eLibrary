@@ -122,14 +122,17 @@ app.use("/api/admin", adminRouter);
 app.use("/api/admin/smart-import", smartImportRouter);
 app.use("/api/ai-study", aiStudyRouter);
 
-app.get("/health", (req, res) => {
+const healthHandler = (req: express.Request, res: express.Response) => {
   res.status(200).json({
     status: "ok",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     version: process.env.npm_package_version || "1.0.0",
   });
-});
+};
+
+app.get("/health", healthHandler);
+app.get("/api/health", healthHandler);
 
 app.get("/ready", (req, res) => {
   const dbState = mongoose.connection.readyState;

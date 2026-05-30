@@ -1,9 +1,9 @@
 import crypto from "crypto"
-import { OpenAIEmbeddings } from "@langchain/openai"
-import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters"
 import Book from "../models/Book"
 import BookVectorChunk from "../models/BookVectorChunk"
-import { loadBookPDF } from "./langchainPdfService"
+import { buildChapterAwareChunks, processBookPdf } from "./pdfPipelineService"
+import { getGeminiEmbeddings } from "../embeddings/embeddingService"
+import { isChapterMatch, mmrSelectChunks } from "../rag/retrievalService"
 
 export type VectorStudyTask = "summary" | "mcq" | "keypoints"
 
@@ -24,47 +24,15 @@ export interface VectorContextResult {
   error?: string
 }
 
-const VECTOR_MODEL = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small"
 const MAX_CONTEXT_CHUNKS = 12
-
-function getEmbeddingsModel() {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is not set")
-  }
-
-  return new OpenAIEmbeddings({
-    apiKey: process.env.OPENAI_API_KEY,
-    model: VECTOR_MODEL,
-  })
-}
 
 function normalizeText(text: string): string {
   return text.replace(/\s+/g, " ").trim()
 }
 
-function cosineSimilarity(left: number[], right: number[]): number {
-  let dot = 0
-  let leftMagnitude = 0
-  let rightMagnitude = 0
-
-  const length = Math.min(left.length, right.length)
-  for (let index = 0; index < length; index += 1) {
-    const leftValue = left[index] || 0
-    const rightValue = right[index] || 0
-    dot += leftValue * rightValue
-    leftMagnitude += leftValue * leftValue
-    rightMagnitude += rightValue * rightValue
-  }
-
-  if (!leftMagnitude || !rightMagnitude) {
-    return 0
-  }
-
-  return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude))
-}
-
-function buildTaskQueries(book: VectorStudyBook, task: VectorStudyTask): string[] {
+function buildTaskQueries(book: VectorStudyBook, task: VectorStudyTask, chapterFocus?: string): string[] {
   const base = `${book.title} ${book.author} ${book.genre}`
+  const chapterHint = chapterFocus?.trim() || ""
 
   if (task === "summary") {
     return [
@@ -76,10 +44,10 @@ function buildTaskQueries(book: VectorStudyBook, task: VectorStudyTask): string[
 
   if (task === "mcq") {
     return [
-      `${base} definitions facts terminology`,
-      `${book.title} examples applications formulas`,
-      `${book.title} important concepts key details`,
-      `${book.title} chapter topics exam facts`,
+      chapterHint ? `${base} ${chapterHint} definitions facts terminology` : `${base} definitions facts terminology`,
+      chapterHint ? `${book.title} ${chapterHint} examples applications formulas` : `${book.title} examples applications formulas`,
+      chapterHint ? `${book.title} ${chapterHint} important concepts key details` : `${book.title} important concepts key details`,
+      chapterHint ? `${book.title} ${chapterHint} exam facts chapter topics` : `${book.title} chapter topics exam facts`,
     ]
   }
 
@@ -134,7 +102,7 @@ export async function ensureBookVectorIndex(
     pdfTextExtracted: false,
   })
 
-  const pdf = await loadBookPDF(book.pdfUrl, book.title)
+  const pdf = await processBookPdf(book.pdfUrl, book.title)
   if (!pdf.success || !pdf.text) {
     await Book.findByIdAndUpdate(book._id, {
       extractionStatus: "failed",
@@ -144,41 +112,37 @@ export async function ensureBookVectorIndex(
 
     return {
       success: false,
-      pages: pdf.pages || 0,
+      pages: pdf.totalPages || 0,
       chunks: 0,
       error: pdf.error || "Could not read PDF text",
     }
   }
 
-  const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 1400,
-    chunkOverlap: 220,
-  })
-
-  const docs = await splitter.createDocuments([pdf.text])
-  const chunks = docs
-    .map((doc, index) => ({
-      chunkIndex: index,
-      content: normalizeText(doc.pageContent),
-    }))
-    .filter((chunk) => chunk.content.length > 80)
+  const chunks = (await buildChapterAwareChunks({
+    pages: pdf.pages,
+    bookName: book.title,
+  })).filter((chunk) => chunk.content.length > 80)
 
   if (chunks.length === 0) {
     await Book.findByIdAndUpdate(book._id, {
       extractionStatus: "failed",
-      extractionError: "No readable text chunks were extracted from the PDF",
+      extractionError: pdf.usedOcr
+        ? "No readable OCR chunks were extracted from the PDF"
+        : "No readable text chunks were extracted from the PDF",
       pdfTextExtracted: false,
     })
 
     return {
       success: false,
-      pages: pdf.pages || 0,
+      pages: pdf.totalPages || 0,
       chunks: 0,
-      error: "No readable text chunks were extracted from the PDF",
+      error: pdf.usedOcr
+        ? "No readable OCR chunks were extracted from the PDF"
+        : "No readable text chunks were extracted from the PDF",
     }
   }
 
-  const embeddings = getEmbeddingsModel()
+  const embeddings = getGeminiEmbeddings()
   const vectors = await embeddings.embedDocuments(chunks.map((chunk) => chunk.content))
 
   await BookVectorChunk.deleteMany({ bookId: book._id })
@@ -188,20 +152,23 @@ export async function ensureBookVectorIndex(
       chunkIndex: chunk.chunkIndex,
       content: chunk.content,
       embedding: vectors[index] || [],
+      chapter: chunk.chapter,
+      page: chunk.page,
+      bookName: chunk.bookName,
     })),
   )
 
   await Book.findByIdAndUpdate(book._id, {
     extractionStatus: "ready",
     extractionError: "",
-    extractionPages: pdf.pages,
+    extractionPages: pdf.totalPages,
     extractedAt: new Date(),
     pdfTextExtracted: true,
   })
 
   return {
     success: true,
-    pages: pdf.pages,
+    pages: pdf.totalPages,
     chunks: chunks.length,
   }
 }
@@ -210,10 +177,11 @@ async function retrieveRelevantChunks(
   book: VectorStudyBook,
   task: VectorStudyTask,
   limit: number,
+  chapterFocus?: string,
 ): Promise<Array<{ chunkIndex: number; content: string; score: number }>> {
-  const embeddings = getEmbeddingsModel()
+  const embeddings = getGeminiEmbeddings()
   const storedChunks = await BookVectorChunk.find({ bookId: book._id })
-    .select("chunkIndex content embedding")
+    .select("chunkIndex content embedding chapter page bookName")
     .sort({ chunkIndex: 1 })
     .lean()
 
@@ -221,33 +189,37 @@ async function retrieveRelevantChunks(
     return []
   }
 
-  const queries = buildTaskQueries(book, task)
+  const scopedChunks = chapterFocus
+    ? storedChunks.filter((chunk) => chunk.chapter && isChapterMatch(chunk.chapter, chapterFocus))
+    : storedChunks
+
+  if (chapterFocus && scopedChunks.length === 0) {
+    return []
+  }
+
+  const queries = buildTaskQueries(book, task, chapterFocus)
   const queryVectors = await Promise.all(queries.map((query) => embeddings.embedQuery(query)))
 
-  const scored = storedChunks.map((chunk) => {
-    const score = Math.max(
-      ...queryVectors.map((queryVector) => cosineSimilarity(chunk.embedding || [], queryVector)),
-    )
-
-    return {
+  return mmrSelectChunks({
+    chunks: scopedChunks.map((chunk) => ({
       chunkIndex: chunk.chunkIndex,
-      content: normalizeText(chunk.content),
-      score,
-    }
-  })
-
-  return scored
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score
-      }
-
-      return left.chunkIndex - right.chunkIndex
-    })
-    .slice(0, limit)
+      content: chunk.content,
+      embedding: chunk.embedding || [],
+      chapter: chunk.chapter,
+      page: chunk.page,
+      bookName: chunk.bookName,
+    })),
+    queryVectors,
+    limit,
+    lambda: 0.72,
+  }).map((chunk) => ({
+    chunkIndex: chunk.chunkIndex,
+    content: normalizeText(chunk.content),
+    score: chunk.score,
+  }))
 }
 
-export async function buildStudyContext(book: VectorStudyBook, task: VectorStudyTask, limit = MAX_CONTEXT_CHUNKS): Promise<VectorContextResult> {
+export async function buildStudyContext(book: VectorStudyBook, task: VectorStudyTask, limit = MAX_CONTEXT_CHUNKS, chapterFocus?: string): Promise<VectorContextResult> {
   const indexResult = await ensureBookVectorIndex(book)
   if (!indexResult.success && indexResult.error) {
     return {
@@ -259,7 +231,7 @@ export async function buildStudyContext(book: VectorStudyBook, task: VectorStudy
     }
   }
 
-  const chunks = await retrieveRelevantChunks(book, task, limit)
+  const chunks = await retrieveRelevantChunks(book, task, limit, chapterFocus)
   if (chunks.length === 0) {
     return {
       success: false,

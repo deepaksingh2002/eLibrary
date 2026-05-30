@@ -6,6 +6,7 @@ import { User } from "../models/User";
 import { UserActivity } from "../models/UserActivity";
 import { Review } from "../models/Review";
 import { computeRecommendations } from "../services/recommendationEngine";
+import { ensureBookVectorIndex } from "../services/bookVectorService";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { isValidObjectId, paginationParams } from "../utils/validate";
@@ -42,6 +43,64 @@ router.post(
 
 router.use(protect);
 router.use(requireRole("admin"));
+
+router.post(
+  "/books/reindex-vectors",
+  asyncHandler(async (_req, res) => {
+    const books = await Book.find({
+      isDeleted: false,
+      pdfUrl: { $exists: true, $ne: "" },
+    })
+      .select("title author genre description pdfUrl extractionStatus extractionError")
+      .lean();
+
+    const summary = {
+      scanned: books.length,
+      succeeded: 0,
+      failed: 0,
+      skipped: [] as Array<{ id: string; title: string; reason: string }>,
+    };
+
+    for (const book of books) {
+      try {
+        const result = await ensureBookVectorIndex(
+          {
+            _id: String(book._id),
+            title: book.title,
+            author: book.author,
+            genre: book.genre,
+            description: book.description || "",
+            pdfUrl: book.pdfUrl || "",
+          },
+          { force: true },
+        );
+
+        if (result.success) {
+          summary.succeeded += 1;
+        } else {
+          summary.failed += 1;
+          summary.skipped.push({
+            id: String(book._id),
+            title: book.title,
+            reason: result.error || "Vector indexing failed",
+          });
+        }
+      } catch (error: any) {
+        summary.failed += 1;
+        summary.skipped.push({
+          id: String(book._id),
+          title: book.title,
+          reason: error?.message || String(error),
+        });
+      }
+    }
+
+    res.status(200).json({
+      message: "Vector reindex completed",
+      ...summary,
+    });
+  }),
+);
 
 function firstDayOfCurrentMonth(): Date {
   const d = new Date();

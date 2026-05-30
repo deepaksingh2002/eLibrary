@@ -4,6 +4,11 @@ import {
   generateMCQ as generateMCQFromContext,
   generateKeyPoints as generateKeyPointsFromContext,
   loadBookPDF,
+  loadBookPDFPages,
+  extractChapterIndexFromPages,
+  extractChapterIndexFromPagesAsync,
+  resolveChapterRange,
+  slicePagesForChapter,
 } from "./langchainPdfService"
 import { buildStudyContext, VectorStudyBook, VectorStudyTask } from "./bookVectorService"
 
@@ -30,6 +35,11 @@ export interface MCQQuestion {
   topic: string
 }
 
+export interface MCQStudyResult {
+  questions: MCQQuestion[]
+  fallbackUsed: boolean
+}
+
 export interface KeyPoints {
   chapters: {
     title: string
@@ -43,6 +53,13 @@ export interface KeyPoints {
   examTips: string[]
   interviewTopics: string[]
   basedOnPDF: boolean
+}
+
+export interface ChapterIndexEntry {
+  number: number
+  title: string
+  startPage: number
+  endPage: number
 }
 
 export interface BookForAI {
@@ -109,6 +126,20 @@ async function getContext(book: BookForAI, task: VectorStudyTask, limit: number)
   return buildStudyContext(resolved, task, limit)
 }
 
+async function getOptionalStudyContext(
+  book: VectorStudyBook,
+  task: VectorStudyTask,
+  limit: number,
+  chapterFocus?: string,
+) {
+  try {
+    return await buildStudyContext(book, task, limit, chapterFocus)
+  } catch (error: any) {
+    console.warn("[AIStudy] Optional vector context unavailable:", error?.message || error)
+    return null
+  }
+}
+
 async function getPdfText(book: BookForAI) {
   const resolved = await resolveBook(book)
 
@@ -126,6 +157,60 @@ async function getPdfText(book: BookForAI) {
     title: resolved.title,
     author: resolved.author,
     genre: resolved.genre,
+  }
+}
+
+async function getPdfPages(book: BookForAI) {
+  const resolved = await resolveBook(book)
+
+  if (!resolved.pdfUrl) {
+    return null
+  }
+
+  const pdf = await loadBookPDFPages(resolved.pdfUrl, resolved.title)
+  if (!pdf.success || !pdf.pages || pdf.pages.length === 0) {
+    return null
+  }
+
+  return {
+    pages: pdf.pages,
+    totalPages: pdf.totalPages,
+    title: resolved.title,
+    author: resolved.author,
+    genre: resolved.genre,
+    chapters: pdf.chapters || [],
+    usedOcr: pdf.usedOcr || false,
+  }
+}
+
+export async function getBookChapterIndex(book: BookForAI): Promise<{ chapters: ChapterIndexEntry[]; basedOnPDF: boolean }> {
+  try {
+    const pdf = await getPdfPages(book)
+    if (!pdf) {
+      return { chapters: [], basedOnPDF: false }
+    }
+
+    if (Array.isArray(pdf.chapters) && pdf.chapters.length > 0) {
+      return {
+        chapters: pdf.chapters.map((chapter, index) => ({
+          number: index + 1,
+          title: chapter.chapter,
+          startPage: chapter.startPage,
+          endPage: chapter.endPage,
+        })),
+        basedOnPDF: true,
+      }
+    }
+
+    const chapters = await extractChapterIndexFromPagesAsync(pdf.pages, pdf.totalPages, pdf.title)
+
+    return {
+      chapters,
+      basedOnPDF: chapters.length > 0,
+    }
+  } catch (error: any) {
+    console.error("[AIStudy] Chapter index generation failed:", error?.message || error)
+    return { chapters: [], basedOnPDF: false }
   }
 }
 
@@ -165,27 +250,56 @@ export async function generateBookSummary(book: BookForAI): Promise<BookSummary>
 export async function generateMCQQuestions(
   book: BookForAI,
   count = 10,
-): Promise<MCQQuestion[]> {
+  chapterFocus?: string,
+): Promise<MCQStudyResult> {
   try {
-    const pdf = await getPdfText(book)
-    if (pdf) {
-      return generateMCQFromContext(pdf.text, pdf.title, count)
+    const resolved = await resolveBook(book)
+    const pdfPages = await getPdfPages(book)
+    if (pdfPages) {
+      const chapters = Array.isArray(pdfPages.chapters) && pdfPages.chapters.length > 0
+        ? pdfPages.chapters.map((chapter, index) => ({
+            number: index + 1,
+            title: chapter.chapter,
+            startPage: chapter.startPage,
+            endPage: chapter.endPage,
+          }))
+        : await extractChapterIndexFromPagesAsync(pdfPages.pages, pdfPages.totalPages, pdfPages.title)
+      const selectedChapter = resolveChapterRange(chapters, chapterFocus) || chapters[0] || null
+      const chapterText = selectedChapter
+        ? slicePagesForChapter(pdfPages.pages, selectedChapter)
+        : pdfPages.pages.map((page) => page.text).join("\n\n")
+      const chapterLabel = selectedChapter
+        ? `Chapter ${selectedChapter.number}: ${selectedChapter.title}`
+        : chapterFocus || "Chapter 1"
+      const retrieverFocus = chapterFocus || chapterLabel
+      const vectorContext = await getOptionalStudyContext(resolved, "mcq", Math.max(10, count), retrieverFocus)
+      const combinedContext = [chapterText, vectorContext?.success ? vectorContext.text : ""]
+        .filter((value) => value.trim().length > 0)
+        .join("\n\n")
+
+      return generateMCQFromContext(
+        combinedContext || chapterText || pdfPages.pages.map((page) => page.text).join("\n\n"),
+        pdfPages.title,
+        count,
+        chapterLabel,
+      )
     }
 
-    const context = await getContext(book, "mcq", Math.max(10, count))
+    const context = await buildStudyContext(resolved, "mcq", Math.max(10, count), chapterFocus)
     if (!context.success || !context.text) {
       console.error("[AIStudy] MCQ vector context failed:", context.error)
-      return []
+      return { questions: [], fallbackUsed: false }
     }
 
     return generateMCQFromContext(
       context.text,
       book.title || "Unknown Title",
       count,
+      chapterFocus,
     )
   } catch (error: any) {
     console.error("[AIStudy] MCQ generation failed:", error?.message || error)
-    return []
+    return { questions: [], fallbackUsed: false }
   }
 }
 

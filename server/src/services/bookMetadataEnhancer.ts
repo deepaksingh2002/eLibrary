@@ -1,8 +1,6 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ExternalBookResult } from "./bookSearchService";
 import { resolveExternalPdfUrl } from "./externalPdfResolver";
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+import { getGeminiJsonModel } from "../ai/geminiJsonModel";
 
 const STANDARD_GENRES = [
   "Programming",
@@ -119,6 +117,23 @@ function stripMarkdownFences(text: string): string {
     .trim();
 }
 
+function getMessageText(content: unknown): string {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return String(content || "").trim();
+
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (part && typeof part === "object" && "text" in part) {
+        const text = (part as { text?: unknown }).text;
+        return typeof text === "string" ? text : "";
+      }
+      return "";
+    })
+    .join("\n")
+    .trim();
+}
+
 export function buildBaseEnhancedBookData(
   book: ExternalBookResult,
 ): EnhancedBookData {
@@ -152,13 +167,9 @@ export async function enhanceBookMetadata(
   }
 
   try {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      generationConfig: {
-        maxOutputTokens: 500,
-        temperature: 0.3,
-        responseMimeType: "application/json",
-      },
+    const model = getGeminiJsonModel({
+      maxTokens: 500,
+      temperature: 0.3,
     });
 
     const prompt = `You are a library cataloguing assistant.
@@ -196,9 +207,16 @@ Return this exact JSON structure:
   "author":      "cleaned author name"
 }`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
-    const parsed = JSON.parse(stripMarkdownFences(text));
+    const response = await model.invoke([
+      [
+        "system",
+        "You are a library cataloguing assistant that returns strict JSON.",
+      ],
+      ["human", prompt],
+    ] as any);
+    const parsed = JSON.parse(
+      stripMarkdownFences(getMessageText(response.content)),
+    );
 
     return {
       ...base,

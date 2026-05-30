@@ -10,6 +10,7 @@ import {
   generateBookSummary,
   generateMCQQuestions,
   generateKeyPoints,
+  getBookChapterIndex,
 } from "../services/aiStudyService"
 
 const router = Router()
@@ -125,16 +126,18 @@ function respondWithKeyPoints(
 
 function respondWithMcq(
   res: import("express").Response,
-  questions: Awaited<ReturnType<typeof generateMCQQuestions>>,
+  questions: Awaited<ReturnType<typeof generateMCQQuestions>>["questions"],
   cached: boolean,
+  fallbackUsed: boolean,
   errorMessage: string,
 ) {
   if (questions.length === 0) {
-    return res.status(503).json({
+    return res.status(200).json({
       questions,
       total: 0,
       cached,
       basedOnPDF: false,
+      fallbackUsed: false,
       error: errorMessage,
     })
   }
@@ -144,6 +147,7 @@ function respondWithMcq(
     total: questions.length,
     cached,
     basedOnPDF: true,
+    fallbackUsed,
   })
 }
 
@@ -213,11 +217,12 @@ router.get(
   "/:bookId/summary",
   asyncHandler(async (req, res) => {
     const bookId = getParamValue(req.params.bookId)
+    const forceFresh = getParamValue(req.query.fresh as string | string[] | undefined) !== undefined
     if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID")
     }
 
-    const cached = await getCached(bookId, "summary")
+    const cached = forceFresh ? null : await getCached(bookId, "summary")
     if (cached) {
       return res.json({
         summary: cached.data,
@@ -239,29 +244,72 @@ router.get(
 )
 
 router.get(
-  "/:bookId/mcq",
+  "/:bookId/chapter-index",
   asyncHandler(async (req, res) => {
     const bookId = getParamValue(req.params.bookId)
-    const count = Math.min(20, Math.max(5, parseInt(req.query.count as string) || 10))
     if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID")
     }
 
-    const cached = await getCached(bookId, "mcq")
+    const book = await getBook(bookId)
+    console.log("[AIStudy] Generating chapter index:", book.title)
+
+    const chapterIndex = await getBookChapterIndex(book as any)
+
+    if (!chapterIndex.basedOnPDF || chapterIndex.chapters.length === 0) {
+      return res.status(503).json({
+        chapterIndex,
+        basedOnPDF: false,
+        error: "Could not detect a chapter index from the PDF contents.",
+      })
+    }
+
+    return res.status(200).json({
+      chapterIndex,
+      basedOnPDF: true,
+    })
+  }),
+)
+
+router.get(
+  "/:bookId/mcq",
+  asyncHandler(async (req, res) => {
+      const bookId = getParamValue(req.params.bookId)
+      const rawCount = getParamValue(req.query.count as string | string[] | undefined)
+      let count = 10
+      if (rawCount !== undefined) {
+        const parsed = Number.parseInt(rawCount, 10)
+        if (Number.isNaN(parsed)) {
+          throw new ApiError(400, "count must be a number between 5 and 20")
+        }
+        if (parsed < 5 || parsed > 20) {
+          throw new ApiError(400, "count must be between 5 and 20")
+        }
+        count = parsed
+      }
+      const chapterFocus = getParamValue(req.query.chapter as string | string[] | undefined)
+    const forceFresh = getParamValue(req.query.fresh as string | string[] | undefined) !== undefined
+    if (!bookId || !Types.ObjectId.isValid(bookId)) {
+      throw new ApiError(400, "Invalid book ID")
+    }
+
+    const cached = !forceFresh && !chapterFocus ? await getCached(bookId, "mcq") : null
     if (cached) {
       return res.json({
         questions: cached.data,
         total: Array.isArray(cached.data) ? cached.data.length : 0,
         cached: true,
         basedOnPDF: true,
+        fallbackUsed: false,
       })
     }
 
     const book = await getBook(bookId)
     console.log("[AIStudy] Generating MCQ:", book.title)
 
-    const questions = await generateMCQQuestions(book as any, count)
-    if (questions.length > 0) {
+    const mcqResult = await generateMCQQuestions(book as any, count, chapterFocus)
+    const questions = mcqResult.questions
+    if (questions.length > 0 && !chapterFocus && !mcqResult.fallbackUsed) {
       await saveCache(bookId, "mcq", questions)
     }
 
@@ -269,6 +317,7 @@ router.get(
       res,
       questions,
       false,
+      mcqResult.fallbackUsed,
       "Could not generate quiz questions from the PDF content.",
     )
   }),
@@ -278,11 +327,12 @@ router.get(
   "/:bookId/key-points",
   asyncHandler(async (req, res) => {
     const bookId = getParamValue(req.params.bookId)
+    const forceFresh = getParamValue(req.query.fresh as string | string[] | undefined) !== undefined
     if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID")
     }
 
-    const cached = await getCached(bookId, "keypoints")
+    const cached = forceFresh ? null : await getCached(bookId, "keypoints")
     if (cached) {
       return res.json({
         keyPoints: cached.data,

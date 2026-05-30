@@ -11,11 +11,9 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@langchain/community": "^1.1.28",
     "@langchain/core": "^1.1.48",
     "@langchain/google-genai": "^2.1.31",
-    "@langchain/openai": "^1.4.7",
     "@langchain/textsplitters": "^1.0.1",
     "@types/bcryptjs": "^3.0.0",
     "@types/cookie-parser": "^1.4.10",
@@ -44,10 +42,14 @@
     "mongoose": "^9.6.2",
     "multer": "^2.1.1",
     "multer-storage-cloudinary": "^4.0.0",
+    "natural": "^8.1.1",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.7",
     "pdf-parse": "^2.4.5",
-    "typescript": "^6.0.3"
+    "sharp": "^0.34.5",
+    "tesseract.js": "^7.0.0",
+    "typescript": "^6.0.3",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

@@ -10,6 +10,7 @@ import { ApiError } from "../utils/ApiError";
 import { normalizeExtractionStatus } from "../utils/bookAiStatus";
 import { scheduleBookAiProcessing } from "./bookAiProcessing";
 import { summarizeBookWithAIInsights, summarizeReaderOpinions } from "./aiBookInsightsService";
+import AIStudyCache from "../models/AIStudyCache";
 import { resolveExternalPdfUrl } from "./externalPdfResolver";
 
 type AuthUser = {
@@ -537,6 +538,17 @@ export async function updateBook(
         pdfUrl: book.pdfUrl || "",
         title: book.title,
         force: true,
+      });
+
+      // Clear AI study cache when a new PDF is uploaded so stale cached
+      // study packs are not served for the updated book.
+      setImmediate(async () => {
+        try {
+          await AIStudyCache.deleteMany({ bookId: new (require("mongoose").Types.ObjectId)(book._id) });
+          console.log("[Book] AI study cache cleared for book:", book._id.toString());
+        } catch (err: any) {
+          console.error("[Book] Cache clear failed:", err?.message || err);
+        }
       });
     }
 

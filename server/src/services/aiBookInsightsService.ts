@@ -1,17 +1,55 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { processBookPdf } from "./pdfPipelineService";
 
 const FALLBACK_EXPLANATION =
   "Readers who enjoy similar genres and authors have rated this " +
   "book highly. It shares key themes with books you have already enjoyed.";
 
-const MAX_INLINE_PDF_BYTES = 15 * 1024 * 1024;
+const MAX_SUMMARY_CONTEXT_CHARS = 18_000;
 
 let availabilityCache: {
   available: boolean;
   checkedAt: number;
 } | null = null;
+
+function getGeminiModel(params: { maxTokens: number; temperature: number }) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not set");
+  }
+
+  return new ChatGoogleGenerativeAI({
+    model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+    temperature: params.temperature,
+    apiKey: process.env.GEMINI_API_KEY,
+    maxOutputTokens: params.maxTokens,
+  } as any);
+}
+
+function parseJsonResponse<T>(text: string): T {
+  const cleaned = text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  return JSON.parse(cleaned) as T;
+}
+
+function getMessageText(content: unknown): string {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return String(content || "").trim();
+
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (part && typeof part === "object" && "text" in part) {
+        const text = (part as { text?: unknown }).text;
+        return typeof text === "string" ? text : "";
+      }
+      return "";
+    })
+    .join("\n")
+    .trim();
+}
 
 export async function generateRecommendationExplanation(params: {
   targetBook: {
@@ -51,17 +89,12 @@ this book. Be specific, conversational, and reference what the
 books have in common. Do not start with "I" or "This book".
 Do not use any markdown formatting.`;
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      generationConfig: {
-        maxOutputTokens: 150,
-        temperature: 0.7,
-        topP: 0.9,
-      },
-    });
-
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const model = getGeminiModel({ maxTokens: 150, temperature: 0.7 });
+    const response = await model.invoke([
+      ["system", "You are a helpful library recommendation assistant."],
+      ["human", prompt],
+    ] as any);
+    const text = getMessageText(response.content);
 
     if (!text || text.length < 10) {
       console.warn("[AI] Empty response - using fallback");
@@ -84,13 +117,8 @@ export async function isAIServiceAvailable(): Promise<boolean> {
   }
 
   try {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-    });
-    await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: "ping" }] }],
-      generationConfig: { maxOutputTokens: 5 },
-    });
+    const model = getGeminiModel({ maxTokens: 5, temperature: 0 });
+    await model.invoke([["human", "ping"]] as any);
     availabilityCache = { available: true, checkedAt: Date.now() };
     return true;
   } catch {
@@ -131,81 +159,50 @@ export async function summarizeBookWithAIInsights(params: {
   }
 
   try {
-    const pdfResponse = await fetch(params.pdfUrl);
-    if (!pdfResponse.ok) {
-      console.error(
-        "[AI] PDF fetch failed:",
-        pdfResponse.status,
-        pdfResponse.statusText,
-      );
-      return fallback;
-    }
-
-    const contentLength = Number(
-      pdfResponse.headers.get("content-length") || 0,
+    const pdfResult = await processBookPdf(
+      params.pdfUrl,
+      `${params.title}-${params.author}`,
     );
-    if (contentLength > MAX_INLINE_PDF_BYTES) {
-      console.warn(
-        "[AI] PDF too large for inline summary - using fallback",
-      );
+
+    if (!pdfResult.success || !pdfResult.text.trim()) {
+      console.error("[AI] PDF extraction failed:", pdfResult.error || "No text");
       return fallback;
     }
 
-    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-    if (pdfBuffer.byteLength > MAX_INLINE_PDF_BYTES) {
-      console.warn("[AI] PDF too large after download - using fallback");
-      return fallback;
-    }
+    const model = getGeminiModel({ maxTokens: 900, temperature: 0.2 });
+    const context = pdfResult.text.slice(0, MAX_SUMMARY_CONTEXT_CHARS);
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      tools: [
-        {
-          googleSearch: {},
-        },
-      ] as any,
-      generationConfig: {
-        maxOutputTokens: 800,
-        temperature: 0.3,
-        topP: 0.9,
-      },
-    });
-
-    const prompt = `Summarize this PDF book for an eLibrary reader. Additionally, use Google Search to analyze global readers' comments and reviews about this book from the internet, and provide a short summary of what readers generally think about it.
+    const prompt = `Summarize this book for an eLibrary reader using the extracted PDF text.
 Book metadata:
 Title: ${params.title}
 Author: ${params.author}
 Genre: ${params.genre}
 Tags: ${(params.tags || []).join(", ") || "none"}
+PDF extraction mode: ${pdfResult.source}${pdfResult.usedOcr ? " (OCR)" : ""}
 
 Return valid JSON only with this shape:
 {
-  "summary": "A clear 2 to 4 paragraph summary incorporating the PDF content and an analysis of global reader comments and reviews.",
-  "keyPoints": ["5 concise bullet points about the most important ideas and reader sentiments"]
+  "summary": "A clear 2 to 4 paragraph summary grounded in the PDF content.",
+  "keyPoints": ["5 concise bullet points about the most important ideas"]
 }
 
-Do not use markdown fences.`;
+Rules:
+- Base your answer only on the provided metadata and extracted PDF text.
+- Do not invent facts that are not in the extracted text.
+- Do not use markdown fences.
 
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          data: pdfBuffer.toString("base64"),
-          mimeType: "application/pdf",
-        },
-      },
-      { text: prompt },
-    ]);
+Extracted PDF text:
+${context}`;
 
-    const raw = result.response.text().trim();
-    const cleaned = raw
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/```$/i, "")
-      .trim();
-    const parsed = JSON.parse(cleaned) as {
+    const response = await model.invoke([
+      ["system", "You summarize books accurately and return strict JSON output."],
+      ["human", prompt],
+    ] as any);
+
+    const parsed = parseJsonResponse<{
       summary?: string;
       keyPoints?: string[];
-    };
+    }>(getMessageText(response.content));
 
     if (!parsed.summary || !Array.isArray(parsed.keyPoints)) {
       return fallback;
@@ -243,31 +240,37 @@ export async function summarizeReaderOpinions(params: {
   }
 
   try {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      tools: [
-        {
-          googleSearch: {},
-        },
-      ] as any,
-      generationConfig: {
-        maxOutputTokens: 250,
-        temperature: 0.3,
-        topP: 0.9,
-      },
-    });
+    const model = getGeminiModel({ maxTokens: 250, temperature: 0.3 });
 
-    const prompt = `Use Google Search to find short reader opinions and review patterns for the book "${params.title}" by ${params.author}.\n\nReturn valid JSON only with this shape:\n{\n  "readerNotes": [\n    "Short note about what readers generally like about the book.",\n    "Short note about common praise or usefulness.",\n    "Short note about any repeated caveat or mixed opinion."\n  ]\n}\n\nRules:\n- Keep each note under 25 words.\n- Summarize the overall reader sentiment.\n- Do not quote reviews verbatim.\n- Do not include markdown fences.`;
+    const prompt = `Create likely reader sentiment notes for the book "${params.title}" by ${params.author}.
 
-    const result = await model.generateContent(prompt);
-    const raw = result.response.text().trim();
-    const cleaned = raw
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/```$/i, "")
-      .trim();
+Book metadata:
+- Genre: ${params.genre}
+- Tags: ${(params.tags || []).join(", ") || "none"}
 
-    const parsed = JSON.parse(cleaned) as { readerNotes?: unknown };
+Return valid JSON only with this shape:
+{
+  "readerNotes": [
+    "Short note about what readers generally like about the book.",
+    "Short note about common praise or usefulness.",
+    "Short note about any repeated caveat or mixed opinion."
+  ]
+}
+
+Rules:
+- Keep each note under 25 words.
+- Keep wording general and avoid fabricated specific review claims.
+- Do not quote reviews.
+- Do not include markdown fences.`;
+
+    const response = await model.invoke([
+      ["system", "You produce concise, neutral sentiment summaries from book metadata."],
+      ["human", prompt],
+    ] as any);
+
+    const parsed = parseJsonResponse<{ readerNotes?: unknown }>(
+      getMessageText(response.content),
+    );
     const readerNotes = Array.isArray(parsed.readerNotes)
       ? parsed.readerNotes
           .map((note) => (typeof note === "string" ? note.trim() : ""))
