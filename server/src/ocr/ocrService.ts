@@ -26,7 +26,6 @@ async function preprocessImage(buffer: Buffer, dpi: number, binarize = true): Pr
     img = img
       .resize({ width: 1800, withoutEnlargement: true })
       .threshold(160)
-      .resize({ width: null })
   }
 
   return img.toBuffer()
@@ -41,14 +40,9 @@ export async function ocrPdfPages(
   const language = options.language || process.env.PDF_OCR_LANG || "eng"
   const binarize = options.binarize !== false
 
-  const worker = await createWorker({
-    logger: () => null,
-  })
+  const worker = await createWorker(language)
 
   try {
-    await worker.load()
-    await worker.loadLanguage(language)
-    await worker.initialize(language)
 
     const pages: OcrPageResult[] = []
 
