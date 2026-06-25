@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import type { Review } from "../types";
 import { useGetBookExplanationQuery, useGetAiStudySummaryQuery } from "../store/services/api";
+import { useAuthStore } from "../store/authStore";
 import BookSummary from "./reader/BookSummary";
 
 interface AIExplanationModalProps {
@@ -29,8 +30,10 @@ export const AIExplanationModal: React.FC<AIExplanationModalProps> = ({
 
   const isSummary = mode === "summary";
 
+  const hasAuthHydrated = useAuthStore((s) => s.hasHydrated);
+
   const studySummaryQuery = useGetAiStudySummaryQuery({ bookId: bookId ?? "" }, {
-    skip: !(isHydrated && !!bookId && isSummary),
+    skip: !(isHydrated && hasAuthHydrated && !!bookId && isSummary),
   });
 
   const explanationQuery = useGetBookExplanationQuery(bookId ?? "", {

@@ -296,7 +296,15 @@ export async function processBookPdf(pdfUrl: string, bookName: string): Promise<
       bookName,
     }))
 
-    const text = chapterAwarePages.map((page) => page.text).join("\n\n").trim()
+    const hasChapters = chapters.length > 0
+    const contentPages = hasChapters
+      ? chapterAwarePages.filter((page) => page.chapter !== "Uncategorized")
+      : chapterAwarePages
+
+    const text = (contentPages.length > 0 ? contentPages : chapterAwarePages)
+      .map((page) => page.text)
+      .join("\n\n")
+      .trim()
 
     if (text.length === 0) {
       return {

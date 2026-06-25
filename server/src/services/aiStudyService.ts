@@ -3,10 +3,12 @@ import {
   generateSummary as generateSummaryFromContext,
   generateMCQ as generateMCQFromContext,
   generateKeyPoints as generateKeyPointsFromContext,
+  generateKeyPointsForChapter,
   loadBookPDF,
   loadBookPDFPages,
   extractChapterIndexFromPages,
   extractChapterIndexFromPagesAsync,
+  sanitizeChapterRanges,
   resolveChapterRange,
   slicePagesForChapter,
 } from "./langchainPdfService"
@@ -178,7 +180,19 @@ async function getPdfPages(book: BookForAI) {
     title: resolved.title,
     author: resolved.author,
     genre: resolved.genre,
-    chapters: pdf.chapters || [],
+    chapters: sanitizeChapterRanges(
+      (pdf.chapters || []).map((chapter, index) => ({
+        number: index + 1,
+        title: chapter.chapter,
+        startPage: chapter.startPage,
+        endPage: chapter.endPage,
+      })),
+      pdf.totalPages,
+    ).map((chapter) => ({
+      chapter: chapter.title,
+      startPage: chapter.startPage,
+      endPage: chapter.endPage,
+    })),
     usedOcr: pdf.usedOcr || false,
   }
 }
@@ -190,7 +204,7 @@ export async function getBookChapterIndex(book: BookForAI): Promise<{ chapters: 
       return { chapters: [], basedOnPDF: false }
     }
 
-    if (Array.isArray(pdf.chapters) && pdf.chapters.length > 0) {
+    if (Array.isArray(pdf.chapters) && pdf.chapters.length > 1) {
       return {
         chapters: pdf.chapters.map((chapter, index) => ({
           number: index + 1,
@@ -264,13 +278,26 @@ export async function generateMCQQuestions(
             endPage: chapter.endPage,
           }))
         : await extractChapterIndexFromPagesAsync(pdfPages.pages, pdfPages.totalPages, pdfPages.title)
-      const selectedChapter = resolveChapterRange(chapters, chapterFocus) || chapters[0] || null
+      
+      const selectedChapter = chapterFocus && chapterFocus !== "all"
+        ? (resolveChapterRange(chapters, chapterFocus) || chapters[0] || null)
+        : null
+
+      const contentPages = chapters.length > 0
+        ? pdfPages.pages.filter((page) => {
+            const pageNum = page.pageNumber
+            return chapters.some((ch) => pageNum >= ch.startPage && pageNum <= ch.endPage)
+          })
+        : pdfPages.pages
+
       const chapterText = selectedChapter
         ? slicePagesForChapter(pdfPages.pages, selectedChapter)
-        : pdfPages.pages.map((page) => page.text).join("\n\n")
+        : (contentPages.length > 0 ? contentPages : pdfPages.pages).map((page) => page.text).join("\n\n")
+
       const chapterLabel = selectedChapter
         ? `Chapter ${selectedChapter.number}: ${selectedChapter.title}`
-        : chapterFocus || "Chapter 1"
+        : chapterFocus || "All chapters"
+
       const retrieverFocus = chapterFocus || chapterLabel
       const vectorContext = await getOptionalStudyContext(resolved, "mcq", Math.max(10, count), retrieverFocus)
       const combinedContext = [chapterText, vectorContext?.success ? vectorContext.text : ""]
@@ -303,16 +330,110 @@ export async function generateMCQQuestions(
   }
 }
 
-export async function generateKeyPoints(book: BookForAI): Promise<KeyPoints> {
+export async function generateKeyPoints(book: BookForAI, chapterFocus?: string): Promise<KeyPoints> {
   try {
-    const pdf = await getPdfText(book)
-    if (pdf) {
-      return generateKeyPointsFromContext(
-        pdf.text,
-        pdf.title,
-        pdf.author,
-        pdf.genre,
-      )
+    const pdfPages = await getPdfPages(book)
+    if (pdfPages) {
+      const chapters = Array.isArray(pdfPages.chapters) && pdfPages.chapters.length > 0
+        ? pdfPages.chapters.map((chapter, index) => ({
+            number: index + 1,
+            title: chapter.chapter,
+            startPage: chapter.startPage,
+            endPage: chapter.endPage,
+          }))
+        : await extractChapterIndexFromPagesAsync(pdfPages.pages, pdfPages.totalPages, pdfPages.title)
+
+      // Filter chapters based on chapterFocus if specified
+      let chaptersToProcess = chapters
+      if (chapterFocus && chapterFocus !== "all") {
+        const selected = resolveChapterRange(chapters, chapterFocus)
+        if (selected) {
+          chaptersToProcess = [selected]
+        }
+      }
+
+      if (chaptersToProcess.length === 0) {
+        return {
+          chapters: [],
+          glossary: [],
+          takeaways: [],
+          examTips: [],
+          interviewTopics: [],
+          basedOnPDF: true,
+        }
+      }
+
+      // Generate key points for the selected chapters
+      // We will do this in batches of 3 to avoid rate limits
+      const results: any[] = []
+      const batchSize = 3
+      for (let i = 0; i < chaptersToProcess.length; i += batchSize) {
+        const batch = chaptersToProcess.slice(i, i + batchSize)
+        const batchResults = await Promise.all(
+          batch.map(async (ch) => {
+            const chText = slicePagesForChapter(pdfPages.pages, ch)
+            if (!chText || chText.trim().length < 200) {
+              return null
+            }
+            try {
+              return await generateKeyPointsForChapter(chText, pdfPages.title, ch.title, ch.number)
+            } catch (err) {
+              console.error(`[KeyPoints] Failed for chapter ${ch.number}:`, err)
+              return null
+            }
+          })
+        )
+        results.push(...batchResults)
+      }
+
+      const validResults = results.filter(Boolean)
+      if (validResults.length === 0) {
+        return {
+          chapters: [],
+          glossary: [],
+          takeaways: [],
+          examTips: [],
+          interviewTopics: [],
+          basedOnPDF: true,
+        }
+      }
+
+      // Merge results!
+      const mergedChapters = validResults.map((r) => ({
+        number: r.number,
+        title: r.title,
+        points: r.points,
+      }))
+
+      // Deduplicate glossary by term
+      const glossaryMap = new Map<string, string>()
+      validResults.forEach((r) => {
+        if (Array.isArray(r.glossary)) {
+          r.glossary.forEach((g: any) => {
+            if (g.term && g.definition) {
+              glossaryMap.set(g.term.trim().toLowerCase(), g.definition.trim())
+            }
+          })
+        }
+      })
+      const mergedGlossary = Array.from(glossaryMap.entries()).map(([term, definition]) => ({
+        term: term.charAt(0).toUpperCase() + term.slice(1),
+        definition,
+      }))
+
+      // Collect takeaways, examTips, interviewTopics
+      const mergedTakeaways = Array.from(new Set(validResults.flatMap((r) => r.takeaways || [])))
+      const mergedExamTips = Array.from(new Set(validResults.flatMap((r) => r.examTips || [])))
+      const mergedInterviewTopics = Array.from(new Set(validResults.flatMap((r) => r.interviewTopics || [])))
+
+      return {
+        chapters: mergedChapters,
+        glossary: mergedGlossary,
+        takeaways: mergedTakeaways,
+        examTips: mergedExamTips,
+        interviewTopics: mergedInterviewTopics,
+        basedOnPDF: true,
+      }
     }
 
     const context = await getContext(book, "keypoints", 12)
@@ -324,12 +445,21 @@ export async function generateKeyPoints(book: BookForAI): Promise<KeyPoints> {
       }
     }
 
-    return generateKeyPointsFromContext(
+    const keyPoints = await generateKeyPointsFromContext(
       context.text,
       book.title || "Unknown Title",
       book.author || "Unknown Author",
       book.genre || "Unknown Genre",
     )
+
+    return {
+      ...keyPoints,
+      chapters: keyPoints.chapters.map((ch, idx) => ({
+        number: idx + 1,
+        title: ch.title,
+        points: ch.points,
+      })),
+    }
   } catch (error: any) {
     console.error("[AIStudy] Key points generation failed:", error?.message || error)
     return FALLBACK_KEY_POINTS

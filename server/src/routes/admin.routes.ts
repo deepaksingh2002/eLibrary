@@ -54,50 +54,36 @@ router.post(
       .select("title author genre description pdfUrl extractionStatus extractionError")
       .lean();
 
-    const summary = {
-      scanned: books.length,
-      succeeded: 0,
-      failed: 0,
-      skipped: [] as Array<{ id: string; title: string; reason: string }>,
-    };
-
-    for (const book of books) {
-      try {
-        const result = await ensureBookVectorIndex(
-          {
-            _id: String(book._id),
-            title: book.title,
-            author: book.author,
-            genre: book.genre,
-            description: book.description || "",
-            pdfUrl: book.pdfUrl || "",
-          },
-          { force: true },
-        );
-
-        if (result.success) {
-          summary.succeeded += 1;
-        } else {
-          summary.failed += 1;
-          summary.skipped.push({
-            id: String(book._id),
-            title: book.title,
-            reason: result.error || "Vector indexing failed",
-          });
+    // Trigger vector reindexing in the background to avoid HTTP timeout
+    setImmediate(async () => {
+      console.info(`[Admin] Starting bulk vector reindexing for ${books.length} books...`);
+      for (const book of books) {
+        try {
+          console.info(`[Admin] Reindexing book: ${book.title} (${book._id})`);
+          await ensureBookVectorIndex(
+            {
+              _id: String(book._id),
+              title: book.title,
+              author: book.author,
+              genre: book.genre,
+              description: book.description || "",
+              pdfUrl: book.pdfUrl || "",
+            },
+            { force: true },
+          );
+        } catch (error: any) {
+          console.error(
+            `[Admin] Reindexing failed for book ${book.title} (${book._id}):`,
+            error?.message || String(error),
+          );
         }
-      } catch (error: any) {
-        summary.failed += 1;
-        summary.skipped.push({
-          id: String(book._id),
-          title: book.title,
-          reason: error?.message || String(error),
-        });
       }
-    }
+      console.info("[Admin] Bulk vector reindexing completed");
+    });
 
-    res.status(200).json({
-      message: "Vector reindex completed",
-      ...summary,
+    res.status(202).json({
+      message: "Vector reindexing triggered in the background for all books",
+      scanned: books.length,
     });
   }),
 );

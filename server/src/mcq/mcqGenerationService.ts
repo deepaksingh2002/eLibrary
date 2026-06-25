@@ -12,6 +12,42 @@ function parseJson(text: string): unknown | null {
   }
 }
 
+/**
+ * Remove leading headings or short question-like prefixes that commonly appear
+ * at the top of OCRed chapter text (e.g. "Chapter 1:", "CHAPTER 1", or
+ * "What is the key idea about Chapter 1:"). This helps avoid sending those
+ * headings into the MCQ prompt where they can be incorrectly incorporated
+ * into generated questions.
+ */
+function sanitizeChapterText(text: string): string {
+  if (!text) return text
+  let t = text.trim()
+
+  // Remove a single leading line if it looks like a chapter heading
+  const lines = t.split(/\r?\n/)
+  if (lines.length > 1) {
+    const first = lines[0].trim()
+
+    // patterns that indicate a heading or short label
+    const headingPattern = /^(chapter\b|ch\.?\b|part\b|section\b)\s*\d+/i
+    const allCapsShort = /^[A-Z0-9\s'"-]{1,60}$/.test(first) && first.split(/\s+/).length <= 8
+    const endsWithColon = /:$/.test(first)
+    const questionPrefix = /^(what|why|how|which)\s+/i
+    const prosePrefix = /^(talks about|describes|explains|shows|covers|introduces|examines|focuses on)\s+/i
+
+    if (headingPattern.test(first) || (allCapsShort && endsWithColon) || questionPrefix.test(first) || prosePrefix.test(first)) {
+      // drop the first line
+      t = lines.slice(1).join("\n").trim()
+    }
+  }
+
+  // Also remove repeated leading phrases like "Chapter 1: Chapter 1: ..."
+  t = t.replace(/^(Chapter\s*\d+:\s*){2,}/i, "")
+  t = t.replace(/^(Chapter\s*\d+:\s*)?(talks about|describes|explains|shows|covers|introduces|examines|focuses on)\s+/i, "$1")
+
+  return t
+}
+
 type GeneratedMCQItem = {
   question_number: number
   concept_tested: string
@@ -115,9 +151,11 @@ export async function generateMcqsFromConcepts(params: {
     .map((concept) => `${concept.name}. ${concept.definition} ${concept.evidence}`)
     .join("\n\n")
 
+  const sanitizedChapterText = sanitizeChapterText(chapterText)
+
   const firstAttempt = await generateOnce({
     model,
-    chapterText,
+    chapterText: sanitizedChapterText,
     count: params.count,
   })
 
@@ -125,7 +163,7 @@ export async function generateMcqsFromConcepts(params: {
 
   const retryAttempt = await generateOnce({
     model,
-    chapterText,
+    chapterText: sanitizedChapterText,
     count: params.count,
   })
 

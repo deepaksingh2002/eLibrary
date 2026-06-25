@@ -217,7 +217,8 @@ router.get(
   "/:bookId/summary",
   asyncHandler(async (req, res) => {
     const bookId = getParamValue(req.params.bookId)
-    const forceFresh = getParamValue(req.query.fresh as string | string[] | undefined) !== undefined
+    const freshVal = getParamValue(req.query.fresh as string | string[] | undefined)
+    const forceFresh = freshVal === "true" || (freshVal !== undefined && Number(freshVal) > 0)
     if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID")
     }
@@ -288,24 +289,27 @@ router.get(
         count = parsed
       }
       const chapterFocus = getParamValue(req.query.chapter as string | string[] | undefined)
-    const forceFresh = getParamValue(req.query.fresh as string | string[] | undefined) !== undefined
+    const freshVal = getParamValue(req.query.fresh as string | string[] | undefined)
+    const forceFresh = freshVal === "true" || (freshVal !== undefined && Number(freshVal) > 0)
     if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID")
     }
 
     const cached = !forceFresh && !chapterFocus ? await getCached(bookId, "mcq") : null
     if (cached) {
+      const questions = Array.isArray(cached.data) ? cached.data : (cached.data?.questions || [])
       return res.json({
-        questions: cached.data,
-        total: Array.isArray(cached.data) ? cached.data.length : 0,
+        questions,
+        total: questions.length,
         cached: true,
         basedOnPDF: true,
-        fallbackUsed: false,
+        fallbackUsed: cached.data?.fallbackUsed || false,
       })
     }
 
     const book = await getBook(bookId)
     console.log("[AIStudy] Generating MCQ:", book.title)
+      console.log("[AIStudy] MCQ params -> count:", count, "chapter:", chapterFocus)
 
     const mcqResult = await generateMCQQuestions(book as any, count, chapterFocus)
     const questions = mcqResult.questions
@@ -327,7 +331,8 @@ router.get(
   "/:bookId/key-points",
   asyncHandler(async (req, res) => {
     const bookId = getParamValue(req.params.bookId)
-    const forceFresh = getParamValue(req.query.fresh as string | string[] | undefined) !== undefined
+    const freshVal = getParamValue(req.query.fresh as string | string[] | undefined)
+    const forceFresh = freshVal === "true" || (freshVal !== undefined && Number(freshVal) > 0)
     if (!bookId || !Types.ObjectId.isValid(bookId)) {
       throw new ApiError(400, "Invalid book ID")
     }

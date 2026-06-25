@@ -6,12 +6,13 @@ interface Props {
   data: KeyPointsData | null
   isLoading: boolean
   basedOnPDF: boolean
+  selectedChapter?: string
   selectedChapterLabel?: string
 }
 
 type Section = "chapters" | "glossary" | "takeaways" | "exam" | "interview"
 
-export default function KeyPoints({ data, isLoading, basedOnPDF, selectedChapterLabel }: Props) {
+export default function KeyPoints({ data, isLoading, basedOnPDF, selectedChapter, selectedChapterLabel }: Props) {
   const [active, setActive] = useState<Section>("chapters")
   const chapterLabel = selectedChapterLabel || "All chapters"
 
@@ -44,6 +45,10 @@ export default function KeyPoints({ data, isLoading, basedOnPDF, selectedChapter
   }
 
   const chapters = Array.isArray(data.chapters) ? data.chapters : []
+  const selectedChapterNum = selectedChapter ? Number(selectedChapter) : null
+  const filteredChapters = selectedChapterNum
+    ? chapters.filter((ch) => ch.number === selectedChapterNum)
+    : chapters
   const takeaways = Array.isArray(data.takeaways) ? data.takeaways : []
   const examTips = Array.isArray(data.examTips) ? data.examTips : []
   const interviewTopics = Array.isArray(data.interviewTopics) ? data.interviewTopics : []
@@ -96,16 +101,16 @@ export default function KeyPoints({ data, isLoading, basedOnPDF, selectedChapter
       {/* CHAPTERS */}
       {active === "chapters" && (
         <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          {chapters.length === 0 ? (
+          {filteredChapters.length === 0 ? (
             <p className="py-4 text-center text-sm text-slate-400">
               No chapter data available
             </p>
           ) : (
-            chapters.map((ch, ci) => (
+            filteredChapters.map((ch, ci) => (
               <div key={ci} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
                 <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
                   <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-600 dark:bg-blue-500/10 dark:text-blue-200">
-                    {ci + 1}
+                    {ch.number || ci + 1}
                   </span>
                   {ch.title}
                 </h3>

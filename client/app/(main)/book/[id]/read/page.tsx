@@ -288,6 +288,9 @@ export default function ReadPage() {
     setPageInputValue(String(clamped));
   };
 
+  const canGoPrevious = currentPage > 1;
+  const canGoNext = totalPages > 0 && currentPage < totalPages;
+
   const progressPercent = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
 
   if (!hasHydrated) {
@@ -317,26 +320,27 @@ export default function ReadPage() {
         style={{ backgroundColor: "#1f2937", height: "56px", borderBottom: "1px solid #374151" }}
       >
         {/* Left */}
-        <div className="flex items-center gap-3 min-w-0 flex-shrink-0">
+        <div className="flex min-w-0 shrink-0 items-center gap-3">
           <button
             onClick={() => router.back()}
-            className="text-white text-sm px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0"
+            className="shrink-0 rounded-lg px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/10"
           >
             ← Back
           </button>
           {book && (
-            <span className="text-gray-300 text-sm truncate max-w-[160px] hidden sm:block">
+            <span className="hidden max-w-40 truncate text-sm text-gray-300 sm:block">
               {book.title}
             </span>
           )}
         </div>
 
         {/* Center — page navigation */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             onClick={() => goToPage(currentPage - 1)}
-            disabled={currentPage <= 1}
+            disabled={!canGoPrevious}
             className="text-white w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 disabled:opacity-30 transition-colors text-lg"
+            aria-label="Previous page"
           >
             ‹
           </button>
@@ -362,15 +366,16 @@ export default function ReadPage() {
           <span className="text-gray-400 text-sm">/ {totalPages}</span>
           <button
             onClick={() => goToPage(currentPage + 1)}
-            disabled={currentPage >= totalPages}
+            disabled={!canGoNext}
             className="text-white w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 disabled:opacity-30 transition-colors text-lg"
+            aria-label="Next page"
           >
             ›
           </button>
         </div>
 
         {/* Right */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           {/* Zoom — hidden on very small screens */}
           <div className="hidden sm:flex items-center gap-1">
             <button
@@ -404,6 +409,34 @@ export default function ReadPage() {
         className="flex-1 overflow-auto flex items-start justify-center"
         style={{ paddingTop: "56px", backgroundColor: "#111827" }}
       >
+        {!isLoading && !loadError && !isPdfUnavailable && totalPages > 0 && (
+          <>
+            <button
+              type="button"
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={!canGoPrevious}
+              aria-label="Previous page"
+              className="fixed left-3 top-1/2 z-40 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-slate-950/70 text-white shadow-xl shadow-black/30 backdrop-blur transition-all hover:bg-slate-900/90 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-35 sm:left-5 sm:h-14 sm:w-14"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={!canGoNext}
+              aria-label="Next page"
+              className="fixed right-3 top-1/2 z-40 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-slate-950/70 text-white shadow-xl shadow-black/30 backdrop-blur transition-all hover:bg-slate-900/90 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-35 sm:right-5 sm:h-14 sm:w-14"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
+          </>
+        )}
+
         {/* Loading state */}
         {(isLoading || isRendering) && (
           <div className="flex flex-col items-center justify-center gap-3 py-20">

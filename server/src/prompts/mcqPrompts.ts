@@ -47,7 +47,11 @@ OUTPUT RULES — non-negotiable:
 - Do not add any extra keys, explanations, markdown, or commentary.`
 
 export function buildMcqGenerationPrompt(): string {
+  const PREAMBLE = `You are an expert educational assistant. Below is text extracted from a book using OCR. Generate multiple-choice questions and key highlights based only on the actual chapter content. Ignore front matter, dedications, certificates, tables of contents, and any heading-like text that is not part of the chapter itself.`
+
   return `\
+${PREAMBLE}
+\
 You are an expert educator and quiz designer. Generate {num_questions} polished,
 professional MCQs from the chapter content below.
 
@@ -65,18 +69,27 @@ STRICT RULES:
 2. CONTENT RULES:
    - Every question must test a DIFFERENT concept from the chapter
    - Never ask the same concept twice even with different wording
-  - Keep the wording specific, academic, and concise
-  - NEVER use the phrasing "which statement best captures" or "which phrase describes"
+   - Keep the wording specific, academic, and concise
+   - Never reuse the chapter title, TOC phrasing, or opener sentence in the stem
+   - NEVER use the phrasing "which statement best captures" or "which phrase describes"
    - Do NOT copy sentences from the text as answer options — write options in your 
      own words
    - All 4 options must be plausible, not obviously wrong
+   - Keep answer options fully written out; do not shorten them with ellipses
+
+4. WRITING & FORMATTING RULES:
+   - Each "question" must be a single, complete grammatical sentence that ends with a question mark ("?").
+   - Do NOT include chapter titles, section headers, page numbers, or excerpted fragments as part of the question.
+     If the chapter text begins with a heading, ignore it when forming the question.
+   - Keep options distinct and complete; they may be longer when the concept requires it.
+   - Do not reuse wording from the chapter verbatim; always paraphrase where possible.
 
 3. ANTI-REPETITION:
    - No two questions share the same concept
    - No answer option text is reused across different questions
    - No question type appears more than 3 times
-  - Avoid generic stems like "which of the following is true" unless the passage
-    is too short to support a more specific question
+   - Avoid generic stems like "which of the following is true" unless the passage
+     is too short to support a more specific question
 
 OUTPUT FORMAT:
 Return a valid JSON array only. No explanation, no markdown, no extra text.

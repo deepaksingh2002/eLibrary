@@ -35,9 +35,9 @@ async function runAIJob(bookId: string, type: AIJobType, opts: any = {}) {
   }
 
   if (type === "mcq") {
-    const questions = await generateMCQQuestions({ _id: bookId } as any, opts?.count || 10);
-    await persistAIResult(bookId, type, questions);
-    return questions;
+    const mcqResult = await generateMCQQuestions({ _id: bookId } as any, opts?.count || 10);
+    await persistAIResult(bookId, type, mcqResult.questions);
+    return mcqResult;
   }
 
   if (type === "keypoints") {

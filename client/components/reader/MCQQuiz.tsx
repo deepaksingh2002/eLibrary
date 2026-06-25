@@ -6,11 +6,17 @@ interface Props {
   questions: MCQQuestion[]
   isLoading: boolean
   basedOnPDF: boolean
+  // optional props from AIStudyPanel
+  selectedChapter?: string
+  selectedChapterLabel?: string
+  onChapterChange?: (value: string) => void
+  onGenerateNew?: () => void
+  isRefreshing?: boolean
 }
 
 type Answers = Record<number, "A" | "B" | "C" | "D"> 
 
-export default function MCQQuiz({ questions, isLoading, basedOnPDF }: Props) {
+export default function MCQQuiz({ questions, isLoading, basedOnPDF, selectedChapter, selectedChapterLabel, onChapterChange, onGenerateNew, isRefreshing }: Props) {
   const [answers, setAnswers] = useState<Answers>({})
   const [submitted, setSubmitted] = useState(false)
   const [showAll, setShowAll] = useState(false)
@@ -157,6 +163,11 @@ export default function MCQQuiz({ questions, isLoading, basedOnPDF }: Props) {
       {!submitted && (
         <button onClick={handleSubmit} disabled={answeredCount < questions.length} className={`w-full py-3.5 rounded-xl font-semibold text-sm ${answeredCount === questions.length ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-200" : "bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
           {answeredCount < questions.length ? `Answer all questions to submit (${answeredCount}/${questions.length})` : "Submit Quiz ✓"}
+        </button>
+      )}
+      {onGenerateNew && (
+        <button onClick={onGenerateNew} disabled={Boolean(isRefreshing)} className="w-full mt-2 py-2 rounded-xl text-sm bg-white border border-gray-200">
+          {isRefreshing ? "Refreshing…" : "Generate new questions"}
         </button>
       )}
     </div>

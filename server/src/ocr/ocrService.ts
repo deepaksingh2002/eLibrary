@@ -1,5 +1,5 @@
 import sharp from "sharp"
-import { recognize } from "tesseract.js"
+import { createWorker } from "tesseract.js"
 import { cleanupOcrText } from "../utils/textCleanup"
 
 export interface OcrPageResult {
@@ -10,6 +10,26 @@ export interface OcrPageResult {
 export interface OcrPdfOptions {
   dpi?: number
   language?: string
+  // whether to run a light binarization step
+  binarize?: boolean
+}
+
+async function preprocessImage(buffer: Buffer, dpi: number, binarize = true): Promise<Buffer> {
+  let img = sharp(buffer, { density: dpi, pages: 1 })
+    .greyscale()
+    .normalize()
+    .flatten({ background: "white" })
+    .png()
+
+  if (binarize) {
+    // adaptive-ish threshold by resizing then restoring helps OCR on noisy scans
+    img = img
+      .resize({ width: 1800, withoutEnlargement: true })
+      .threshold(160)
+      .resize({ width: null })
+  }
+
+  return img.toBuffer()
 }
 
 export async function ocrPdfPages(
@@ -19,27 +39,42 @@ export async function ocrPdfPages(
 ): Promise<OcrPageResult[]> {
   const dpi = options.dpi || Number(process.env.PDF_OCR_DPI || 220)
   const language = options.language || process.env.PDF_OCR_LANG || "eng"
-  const pages: OcrPageResult[] = []
+  const binarize = options.binarize !== false
 
-  for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
-    try {
-      const imageBuffer = await sharp(pdfBuffer, { density: dpi, page: pageIndex }).png().toBuffer()
-      const result = await recognize(imageBuffer, language)
-      const text = cleanupOcrText(result.data?.text || "")
+  const worker = await createWorker({
+    logger: () => null,
+  })
 
-      if (text.length > 0) {
-        pages.push({
-          pageNumber: pageIndex + 1,
-          text,
-        })
+  try {
+    await worker.load()
+    await worker.loadLanguage(language)
+    await worker.initialize(language)
+
+    const pages: OcrPageResult[] = []
+
+    for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
+      try {
+        const imageBuffer = await preprocessImage(
+          await sharp(pdfBuffer, { density: dpi, page: pageIndex }).png().toBuffer(),
+          dpi,
+          binarize,
+        )
+
+        const { data } = await worker.recognize(imageBuffer)
+        const text = cleanupOcrText(data?.text || "")
+
+        if (text && text.length > 0) {
+          pages.push({ pageNumber: pageIndex + 1, text })
+        }
+      } catch (err) {
+        console.warn(`[OCR] page ${pageIndex + 1} failed:`, err instanceof Error ? err.message : String(err))
       }
-    } catch (error) {
-      console.warn(
-        `[OCR] Page ${pageIndex + 1} failed:`,
-        error instanceof Error ? error.message : String(error),
-      )
     }
-  }
 
-  return pages
+    return pages
+  } finally {
+    try {
+      await worker.terminate()
+    } catch {}
+  }
 }

@@ -10,6 +10,8 @@ import * as path from "path";
 import axios from "axios";
 import { processBookPdf } from "./pdfPipelineService";
 import { generateProductionMCQs } from "../mcq/mcqPipeline";
+import buildSummaryPrompt, { SUMMARY_SYSTEM_PROMPT } from "../prompts/summaryPrompts";
+import buildKeyPointsPrompt, { KEYPOINTS_SYSTEM_PROMPT } from "../prompts/highlightsPrompts";
 
 export interface BookSummary {
   overview: string;
@@ -111,13 +113,13 @@ function shortenText(text: string, maxLength = 140): string {
   return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-function compactMCQText(text: string, maxLength = 90): string {
-  const normalized = normalizeWhitespace(text)
-    .replace(/^(?:according to the passage|in the passage|this chapter|the chapter|the text|the book)[\s,:;-]*/i, "")
-    .replace(/^(?:the passage|the chapter|the text|the book)[\s,:;-]*/i, "")
-    .replace(/[.?!:;]+$/g, "");
-
-  return shortenText(normalized, maxLength).replace(/[.?!:;]+$/g, "");
+function compactMCQText(text: string): string {
+  return normalizeWhitespace(text)
+    .replace(/^(?:according to the passage|in the passage|this chapter|the chapter|the text|the book)\b[\s,:;-]*/i, "")
+    .replace(/^(?:the passage|the chapter|the text|the book)\b[\s,:;-]*/i, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/[.?!:;]+$/g, "")
+    .trim();
 }
 
 const TOPIC_PREFIX_PATTERNS = [
@@ -191,6 +193,20 @@ const TOPIC_STOP_WORDS = new Set([
   "pdf",
   "book",
 ])
+
+const CONVERSATIONAL_BANNED: RegExp[] = [
+  /\bsteal\b/i,
+  /\bstereo\b/i,
+  /\bguitar\b/i,
+  /\bfriends?\b/i,
+  /\bboyfriend\b/i,
+  /\bgirlfriend\b/i,
+  /\brestaurant\b/i,
+  /\bhotel\b/i,
+  /\bsign up\b/i,
+  /\ball chapters?\b/i,
+  /table of contents/i,
+]
 
 function buildTopicFromSentence(sentence: string, fallbackTopic: string): string {
   const stopWords = new Set([
@@ -286,8 +302,13 @@ function extractFallbackFacts(pdfText: string, bookTitle: string): Array<{ topic
 
   const uniqueFacts = new Map<string, { topic: string; fact: string }>()
 
+  // use the global banned conversational patterns
+  const conversationalBanned = CONVERSATIONAL_BANNED
+
   for (const sentence of blocks) {
     const fact = shortenText(sentence, 150)
+    // filter out conversational or clearly unrelated sentences
+    if (conversationalBanned.some((rx) => rx.test(fact))) continue
     if (uniqueFacts.has(fact)) {
       continue
     }
@@ -371,31 +392,66 @@ function buildFallbackMCQQuestions(
 
   for (let i = 0; i < Math.min(count, facts.length); i += 1) {
     const fact = facts[seedOrder[i % seedOrder.length]]
-    const correctFull = compactMCQText(fact.fact, 110)
+    const correctFull = compactMCQText(fact.fact)
     const correctKey = normalizeQuestionKey(correctFull)
     if (!correctFull || usedCorrect.has(correctKey)) continue
     usedCorrect.add(correctKey)
 
-    const question = questionTemplates[i % questionTemplates.length](chapterFocus || fact.topic || "the passage")
+    // sanitize topic to avoid headings like "Chapter 1: Chapter 1" leaking into questions
+    function sanitizeTopic(input?: string | null): string {
+      if (!input) return "the passage"
+      let s = String(input).trim()
+      // remove leading chapter markers like "Chapter 1:", "CHAPTER 1 -", etc.
+      s = s.replace(/^chapter\s*\d+\s*[:\-–]\s*/i, "")
+      // remove any remaining standalone 'Chapter 1' tokens
+      s = s.replace(/\bchapter\s*\d+\b/ig, "").trim()
+      s = s.replace(/^(talks about|describes|explains|shows|covers|introduces|examines|focuses on)\s+/i, "")
+      s = s.replace(/\b(and|while|because|where|when|as)\b.*$/i, "")
+      s = s.replace(/[.;:!?].*$/, "")
+      // collapse obvious repeated phrases like "Intro Intro" -> "Intro"
+      const dup = s.match(/^(.+?)\s*[:\-–]?\s*\1(?:[:\-–]|\s*)*$/i)
+      if (dup && dup[1]) s = dup[1].trim()
+      if (!s) return "the passage"
+      return s
+    }
+
+    let topicForQuestion = sanitizeTopic(chapterFocus || fact.topic || "the passage")
+    // avoid leaking an 'All chapters' label into the question phrasing
+    if (/all chapters?/i.test(topicForQuestion)) topicForQuestion = "the passage"
+    const question = questionTemplates[i % questionTemplates.length](topicForQuestion)
     const questionKey = normalizeQuestionKey(question)
     if (usedQuestions.has(questionKey)) continue
     usedQuestions.add(questionKey)
 
-    const distractors = facts
+    // prefer distractors that share topic tokens but are not identical
+    const topicTokens = topicForQuestion
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 3)
+
+    const candidateDistractors = facts
       .filter((candidate) => normalizeQuestionKey(candidate.fact) !== correctKey)
-      .map((candidate) => compactMCQText(candidate.fact, 90))
-      .filter((value, index, arr) => arr.indexOf(value) === index)
-      .slice(0, 3)
+      .filter((candidate) => !CONVERSATIONAL_BANNED.some((rx: RegExp) => rx.test(candidate.fact)))
+      .map((candidate) => ({
+        text: compactMCQText(candidate.fact),
+        sim: topicTokens.reduce((acc, tk) => acc + (candidate.topic.toLowerCase().includes(tk) ? 1 : 0), 0),
+      }))
+      .filter((c) => c.text && c.text.length > 12)
+      .sort((a, b) => b.sim - a.sim || a.text.length - b.text.length)
+
+    const distractors = Array.from(new Set(candidateDistractors.map((c) => c.text))).slice(0, 3)
 
     while (distractors.length < 3) {
-      distractors.push(
-        chapterFocus
-          ? compactMCQText(`A different detail from ${chapterFocus}`, 90)
-          : compactMCQText(`A different detail from the passage`, 90),
-      )
+      const filler = chapterFocus
+        ? compactMCQText(`A different detail from the passage`)
+        : compactMCQText(`A different detail from the passage`)
+      if (!distractors.includes(filler)) distractors.push(filler)
+      else break
     }
 
-    const options = shuffleWithSeed([correctFull, ...distractors].slice(0, 4), `${bookTitle || "fallback"}:${question}:${i}`)
+    // sanitize and shorten options to keep them concise
+    const optionsRaw = [correctFull, ...distractors].slice(0, 4).map((o) => compactMCQText(String(o)))
+    const options = shuffleWithSeed(optionsRaw, `${bookTitle || "fallback"}:${question}:${i}`)
     const correctIndex = options.findIndex((option) => normalizeQuestionKey(option) === correctKey)
     const correctLetter = (['A', 'B', 'C', 'D'][correctIndex >= 0 ? correctIndex : 0] as unknown) as
       | 'A'
@@ -545,7 +601,6 @@ function isGenericMCQQuestion(question: string, explanation: string): boolean {
     "what does the passage indicate",
     "according to the passage",
     "which of the following best summarizes",
-    "why is",
     "what outcome or idea does the passage connect",
     "supported by the passage",
     "selected chapter",
@@ -796,12 +851,80 @@ export async function loadBookPDFPages(
 }
 
 function normalizeTocTitle(title: string): string {
-  return title
+  let normalized = normalizeWhitespace(title)
     .replace(/^(chapter|chap\.?|section|part)\s+([0-9ivxlcdm]+[\s.:\-]*)?/i, "")
     .replace(/^\d+[\s.:\-]*/i, "")
     .replace(/\s{2,}/g, " ")
     .replace(/[.·•\-–—]+$/g, "")
     .trim();
+
+  const proseFragment = normalized.match(/^(talks about|describes|explains|shows|covers|introduces|examines|focuses on)\s+(.+)$/i)
+  if (proseFragment?.[2]) {
+    normalized = proseFragment[2]
+      .replace(/\b(and|while|because|where|when|as)\b.*$/i, "")
+      .replace(/[.;:!?].*$/, "")
+      .trim();
+  }
+
+  return normalized.replace(/\s{2,}/g, " ").trim();
+}
+
+function looksLikeChapterTitle(title: string): boolean {
+  const normalized = normalizeWhitespace(title).replace(/\s{2,}/g, " ").trim();
+  if (!normalized || normalized.length < 3 || normalized.length > 90) {
+    return false;
+  }
+
+  const lower = normalized.toLowerCase();
+  const wordCount = normalized.split(/\s+/).length;
+
+  if (
+    /^(contents|table of contents|brief contents|index|preface|dedication|acknowledg(e)?ments|foreword|bibliography|references|works cited|appendices?)$/i.test(normalized) ||
+    /\b(talks about|describes|explains|shows how|shows|covers|introduces|examines|focuses on)\b/i.test(lower) ||
+    /[\[\]{}=<>|#@]/.test(normalized) ||
+    /[?;]/.test(normalized) ||
+    wordCount > 12 ||
+    /\b(?:if you|you can|you will|you may|i'll|i will|we will|we can|this chapter|in this book|the book|the text)\b/i.test(lower)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+export function sanitizeChapterRanges(
+  chapters: ChapterRange[],
+  totalPages?: number,
+): ChapterRange[] {
+  const cleaned = chapters
+    .map((chapter) => ({
+      number: Number.isFinite(Number(chapter.number)) ? Number(chapter.number) : 0,
+      title: normalizeWhitespace(String(chapter.title || "")).replace(/\s{2,}/g, " ").trim(),
+      startPage: Number.isFinite(Number(chapter.startPage)) ? Number(chapter.startPage) : 1,
+      endPage: Number.isFinite(Number(chapter.endPage)) ? Number(chapter.endPage) : Number(chapter.startPage) || 1,
+    }))
+    .filter((chapter) => looksLikeChapterTitle(chapter.title))
+    .filter((chapter) => chapter.startPage >= 1)
+    .sort((left, right) => left.startPage - right.startPage || left.title.localeCompare(right.title))
+
+  const deduped = Array.from(
+    new Map(cleaned.map((chapter) => [`${chapter.startPage}:${chapter.title.toLowerCase()}`, chapter])).values(),
+  )
+
+  const fallbackEndPage = totalPages && totalPages > 0 ? totalPages : undefined
+
+  return deduped.map((chapter, index, items) => ({
+    number: chapter.number > 0 ? chapter.number : index + 1,
+    title: chapter.title,
+    startPage: chapter.startPage,
+    endPage: Math.max(
+      chapter.startPage,
+      Math.min(
+        chapter.endPage,
+        (items[index + 1]?.startPage || (fallbackEndPage ? fallbackEndPage + 1 : chapter.startPage + 1)) - 1,
+      ),
+    ),
+  }))
 }
 
 function romanToInt(roman: string): number {
@@ -942,12 +1065,8 @@ export function extractChapterIndexFromPages(
     const chapterHeadingPatterns = [
         /^\s*chapter\s+\d+\b/i,
         /^\s*chapter\s+[ivxlcdm]+\b/i,
-        /^\s*\d+\s*[\.\)]\s+[A-Za-z].{2,100}$/i,
-        /^\s*[IVXLCDM]+\s*[\.\)]\s+[A-Za-z].{2,100}$/i,
-        /^\s*chapter\s+\w+\b/i,
-        /^(chapter)\s*[:\-]\s*\w+/i,
-        /^(part)\s+\w+/i,
-        /^\s*[A-Za-z\s]{3,100}\s+[\.]{2,}\s+\d{1,4}$/i,
+        /^\s*(chapter|chap|part|appendix)\s+[0-9ivxlcdm]+\b/i,
+        /^\s*\d+\s+[A-Z][a-zA-Z0-9\s,:'\-]{4,100}$/, // Strict: no dots, no brackets, starts with number followed by space then capital letter
     ];
 
     for (const l of lines) {
@@ -980,17 +1099,50 @@ export function extractChapterIndexFromPages(
     ).values(),
   );
 
-  if (deduped.length < 2) {
+  const sanitized = sanitizeChapterRanges(
+    deduped.map((entry, index) => ({
+      number: index + 1,
+      title: entry.title,
+      startPage: entry.startPage,
+      endPage: entry.startPage,
+    })),
+    totalPages,
+  );
+
+  if (sanitized.length < 2) {
     return [];
   }
 
-  return deduped.map((entry, index) => ({
-    number: index + 1,
-    title: entry.title,
-    startPage: entry.startPage,
+  // Find back matter start page
+  let backMatterStartPage: number | null = null;
+  const backMatterPatterns = [
+    /^\s*index\s*$/i,
+    /^\s*subject index\s*$/i,
+    /^\s*author index\s*$/i,
+    /^\s*bibliography\s*$/i,
+    /^\s*references\s*$/i,
+    /^\s*works cited\s*$/i,
+  ];
+
+  for (const page of pages) {
+    const lines = page.text.split(/\n+/).map((line) => normalizeWhitespace(line)).filter(Boolean).slice(0, 5);
+    const hasBackMatter = lines.some((line) => backMatterPatterns.some((pat) => pat.test(line)));
+    if (hasBackMatter) {
+      backMatterStartPage = page.pageNumber;
+      break;
+    }
+  }
+
+  const contentEndPage = backMatterStartPage ? backMatterStartPage - 1 : totalPages;
+
+  return sanitized.map((entry, index) => ({
+    ...entry,
     endPage: Math.max(
       entry.startPage,
-      (deduped[index + 1]?.startPage || (totalPages > 0 ? totalPages + 1 : entry.startPage + 1)) - 1,
+      Math.min(
+        entry.endPage,
+        (sanitized[index + 1]?.startPage || (contentEndPage > 0 ? contentEndPage + 1 : entry.startPage + 1)) - 1,
+      ),
     ),
   }));
 }
@@ -1000,29 +1152,10 @@ export async function extractChapterIndexFromPagesAsync(
   totalPages: number,
   title?: string,
 ): Promise<ChapterRange[]> {
-  // First try quick heuristic
-  const heuristic = extractChapterIndexFromPages(pages, totalPages);
-  if (heuristic && heuristic.length > 1) {
-    return heuristic;
-  }
-
-  // Fallback to LangChain-based TOC extraction using the first few pages as context
-  // Prefer snippet starting from Introduction/Chapter 1 to avoid front-matter
-  const introPatterns = [/\bintroduction\b/i, /^\s*chapter\s*1\b/i, /^\s*1[\.\)]\s+/i];
-  let startIndex = 0;
-  for (let i = 0; i < Math.min(pages.length, 20); i += 1) {
-    const p = pages[i];
-    if (!p || !p.text) continue;
-    const lines = p.text.split(/\n+/).map((l) => normalizeWhitespace(l)).filter(Boolean);
-    if (lines.some((l) => introPatterns.some((pat) => pat.test(l)))) {
-      startIndex = i;
-      break;
-    }
-  }
-
+  // Try LangChain-based TOC extraction using the first 15 pages as context
   const snippet = pages
-    .slice(startIndex, Math.min(pages.length, startIndex + 8))
-    .map((p) => p.text)
+    .slice(0, Math.min(pages.length, 15))
+    .map((p) => `[Page ${p.pageNumber}]\n${p.text}`)
     .join("\n\n")
     .slice(0, 45000);
 
@@ -1032,8 +1165,11 @@ export async function extractChapterIndexFromPagesAsync(
       title: title || "",
       author: "",
       genre: "",
-      maxTokens: 800,
-      prompt: `Find any table of contents or index-like section in the PDF content provided. Return ONLY valid JSON with the following shape:
+      maxTokens: 1000,
+      prompt: `Find the table of contents or brief contents section in the PDF content provided.
+Extract all actual content chapters and their starting page numbers.
+
+Return ONLY valid JSON with the following shape:
 {
   "chapters": [
     { "number": 1, "title": "Chapter title text", "startPage": 12 }
@@ -1041,47 +1177,37 @@ export async function extractChapterIndexFromPagesAsync(
 }
 
 Rules:
-- Base entries only on text provided above. If page numbers are not present, try to estimate start pages relative to the provided page snippet (use 1-based page numbers). If you cannot determine pages, omit the entry.
-- Return at most 40 entries.
-- Do not include preface/acknowledgements as chapter entries.`,
+- Identify the exact page numbers from the [Page X] tags.
+- Return at most 30 chapters.
+- Only include actual content chapters or sections. Do not include Preface, Title page, Table of Contents, Acknowledgments, Dedication, Index, Bibliography, or generic step-by-step lists.`,
     });
 
-    if (!result.success || !result.text) {
-      return heuristic;
-    }
+    if (result.success && result.text) {
+      try {
+        const parsed = parseJSON(result.text);
+        if (parsed && Array.isArray(parsed.chapters) && parsed.chapters.length > 1) {
+          const chapters: ChapterRange[] = sanitizeChapterRanges(
+            parsed.chapters
+            .map((c: any, idx: number) => ({
+              number: Number.isFinite(Number(c.number)) ? Number(c.number) : idx + 1,
+              title: normalizeTocTitle(String(c.title || `Chapter ${idx + 1}`)),
+              startPage: Number.isFinite(Number(c.startPage)) ? Number(c.startPage) : 1,
+            })),
+            totalPages,
+          );
 
-    try {
-      const parsed = parseJSON(result.text);
-      if (!parsed || !Array.isArray(parsed.chapters) || parsed.chapters.length === 0) {
-        return heuristic;
+          if (chapters.length > 1) return chapters;
+        }
+      } catch (err) {
+        console.error("[LangChain] TOC parse error:", (err as any)?.message || err);
       }
-
-      const chapters: ChapterRange[] = parsed.chapters
-        .map((c: any, idx: number) => ({
-          number: Number.isFinite(Number(c.number)) ? Number(c.number) : idx + 1,
-          title: (c.title || `Chapter ${idx + 1}`) as string,
-          startPage: Number.isFinite(Number(c.startPage)) ? Number(c.startPage) : 1,
-        }))
-        .sort((a: ChapterRange, b: ChapterRange) => a.startPage - b.startPage)
-        .map((entry: ChapterRange, i: number, arr: ChapterRange[]) => ({
-          ...entry,
-          // end page is next start -1 or totalPages
-          endPage: Math.max(
-            entry.startPage,
-            (arr[i + 1]?.startPage || (totalPages > 0 ? totalPages + 1 : entry.startPage + 1)) - 1,
-          ),
-        }));
-
-      if (chapters.length > 0) return chapters;
-    } catch (err) {
-      // fall through to return heuristic
-      console.error("[LangChain] TOC parse error:", (err as any)?.message || err);
     }
   } catch (err: any) {
     console.error("[LangChain] TOC extraction failed:", err?.message || err);
   }
 
-  return heuristic;
+  // Fallback to quick heuristic if LLM TOC extraction fails or returns too few chapters
+  return extractChapterIndexFromPages(pages, totalPages);
 }
 
 export function resolveChapterRange(
@@ -1210,22 +1336,7 @@ export async function generateSummary(
     genre,
     maxTokens: 800,
     temperature: 0.1,
-    prompt: `Analyze this book content and return a JSON summary tailored for students and busy readers.
-
-Return this exact JSON:
-{
-  "overview": "3-4 sentences about the book's actual content, main topics, and purpose. Reference specific topics from the PDF.",
-  "keyThemes": ["theme from actual content", "theme 2", "theme 3", "theme 4", "theme 5"],
-  "targetReader": "2-3 short persuasive sentences that explain why a reader should pick up this book: emphasize concrete benefits, actionable outcomes, and who will benefit most (e.g., students, practitioners, managers). Use an engaging, reader-attracting tone—avoid generic phrasing.",
-  "difficulty": "Beginner or Intermediate or Advanced",
-  "estimatedTime": "e.g. 6-8 hours"
-}
-
-Guidelines:
-- Base your response ONLY on the PDF content provided above. Do not invent outside facts.
-- For "targetReader", write a persuasive author-style pitch (2-4 short sentences) written in the voice of the book's author or a passionate advocate. Address the reader directly, emphasize concrete benefits and actionable outcomes, and give a compelling reason to pick up the book now. Use vivid, engaging language tied to the PDF content; avoid vague or generic phrasing.
-- Use specific language tied to the PDF content; avoid vague summaries.
-`,
+    prompt: buildSummaryPrompt(),
   });
 
   if (!result.success || !result.text) {
@@ -1288,6 +1399,10 @@ export async function generateMCQ(
 
   const CHUNK_SIZE = 3000;
   const chunks = splitTextIntoChunks(pdfText, CHUNK_SIZE);
+  if (chunks.length === 0) {
+    console.warn("[MCQ] No chunks generated from PDF text");
+    return { questions: [], fallbackUsed: false };
+  }
   const questionsPerChunk = Math.ceil(count / Math.min(chunks.length, 5));
   const chunksToUse = chunks.slice(0, Math.ceil(count / questionsPerChunk));
 
@@ -1305,20 +1420,21 @@ export async function generateMCQ(
 
     const parser = new StringOutputParser();
     const prompt = PromptTemplate.fromTemplate(`
-  You are a strict academic quiz generator.
-  Your ONLY job is to create concise, book-specific quiz questions from the provided text.
+You are a strict academic quiz generator.
+Your ONLY job is to create concise, chapter-specific quiz questions from the provided text.
 
 CRITICAL RULES — FOLLOW EXACTLY:
-1. ONLY create questions about content in the TEXT BELOW
-2. If a question cannot be answered from the text, SKIP IT
-3. NEVER use general knowledge, Wikipedia, or training data
-4. Every correct answer MUST appear in or be directly
-   inferable from the TEXT BELOW
-5. Copy key phrases from the text into explanations
-   to prove the answer is grounded
-  6. Write short, direct question stems. Prefer "What is...", "Why does...", "How does...", or "What happens when..."
-  7. Avoid generic stems like "Which statement about...", "According to the passage...", or "What does the passage indicate..."
-  8. Keep answer choices short, concrete, and clearly different from each other
+1. ONLY create questions about content in the TEXT BELOW.
+2. If a question cannot be answered from the text, SKIP IT.
+3. NEVER use general knowledge, Wikipedia, or training data.
+4. Every correct answer MUST appear in or be directly inferable from the TEXT BELOW.
+5. Never reuse the chapter title, section heading, or TOC wording as a question stem.
+6. Never include fragmentary prose like "talks about", "describes", or "shows how" in the question.
+7. Write one complete grammatical sentence ending with a question mark.
+8. Keep answer choices plausible, distinct, and fully written out. Do not abbreviate or truncate them.
+9. If the source text begins with a heading or opener sentence, ignore it when forming the question.
+10. Favor direct stems such as "What is...", "Why does...", "How does...", or "What happens when...".
+11. Avoid generic stems like "Which statement about...", "According to the passage...", or "What does the passage indicate...?".
 
 Book: "{title}"
 Chunk {chunkNum} of {totalChunks}
@@ -1328,8 +1444,7 @@ TEXT TO USE (and ONLY this text):
 {text}
 ===END===
 
-Generate exactly {needed} multiple choice questions
-from the TEXT ABOVE ONLY.
+Generate exactly {needed} multiple choice questions from the TEXT ABOVE ONLY.
 
 Style target:
 - Make the question feel like a good textbook quiz item.
@@ -1428,32 +1543,101 @@ QUALITY OVER QUANTITY.
   }
 }
 
-// Split text into overlapping chunks
-function splitTextIntoChunks(text: string, chunkSize: number, overlap = 200): string[] {
-  const chunks: string[] = [];
-  let start = 0;
-  while (start < text.length) {
-    let end = start + chunkSize;
-    if (end < text.length) {
-      const paraEnd = text.lastIndexOf("\n\n", end);
-      if (paraEnd > start + chunkSize * 0.6) {
-        end = paraEnd;
-      } else {
-        const sentEnd = text.lastIndexOf('. ', end);
-        if (sentEnd > start + chunkSize * 0.5) end = sentEnd + 1;
-      }
+function isSemanticHeading(line: string): boolean {
+  const normalized = normalizeWhitespace(line)
+  if (!normalized || normalized.length < 4 || normalized.length > 120) return false
+
+  if (/^(chapter|chap\.?|section|part)\s+[0-9ivxlcdm]+\b/i.test(normalized)) return true
+  if (/^[0-9]+(?:\.[0-9]+)*\s+[A-Z]/.test(normalized)) return true
+  if (/^[A-Z0-9][A-Z0-9\s,:;'"-]{3,}$/.test(normalized) && normalized.split(/\s+/).length <= 10) return true
+
+  return false
+}
+
+function splitIntoSemanticBlocks(text: string): string[] {
+  const blocks: string[] = []
+  let current: string[] = []
+
+  for (const rawLine of normalizeWhitespace(text)
+    .replace(/\n{3,}/g, "\n\n")
+    .split(/\n+/)) {
+    const line = normalizeWhitespace(rawLine)
+    if (!line) continue
+
+    if (isSemanticHeading(line) && current.length > 0) {
+      blocks.push(current.join(" ").trim())
+      current = [line]
+      continue
     }
-    const chunk = text.slice(start, end).trim();
-    if (chunk.length > 200) chunks.push(chunk);
-    start = end - overlap;
-    if (start <= 0) start = end;
+
+    current.push(line)
+    if (line.endsWith(":") || line.endsWith(".") && current.join(" ").length > 260) {
+      blocks.push(current.join(" ").trim())
+      current = []
+    }
   }
-  return chunks;
+
+  if (current.length > 0) {
+    blocks.push(current.join(" ").trim())
+  }
+
+  return blocks.filter(Boolean)
+}
+
+function packSemanticBlocks(blocks: string[], targetSize: number): string[] {
+  const chunks: string[] = []
+  let current: string[] = []
+  let currentLength = 0
+
+  const flush = () => {
+    const chunk = current.join("\n\n").trim()
+    if (chunk.length > 0) {
+      chunks.push(chunk)
+    }
+    current = []
+    currentLength = 0
+  }
+
+  for (const block of blocks) {
+    if (current.length > 0 && currentLength + block.length + 2 > targetSize) {
+      flush()
+    }
+
+    current.push(block)
+    currentLength += block.length + (current.length > 1 ? 2 : 0)
+
+    if (block.length >= targetSize) {
+      flush()
+    }
+  }
+
+  if (current.length > 0) {
+    flush()
+  }
+
+  return chunks
+}
+
+// Split text into semantic chunks aligned to sections and paragraphs.
+function splitTextIntoChunks(text: string, chunkSize: number): string[] {
+  const semanticBlocks = splitIntoSemanticBlocks(text)
+  const chunks = packSemanticBlocks(semanticBlocks.length > 0 ? semanticBlocks : [normalizeWhitespace(text)], chunkSize)
+  return chunks.filter((chunk) => chunk.length > 200)
 }
 
 function verifyMCQAnswers(questions: any[], sourceText: string): MCQQuestion[] {
   const verified: MCQQuestion[] = [];
   const lowerSource = sourceText.toLowerCase();
+
+  function hasSubstringMatch(text: string, source: string, minLen = 12): boolean {
+    if (!text || text.length < minLen) return false;
+    const normalized = normalizeWhitespace(text).toLowerCase();
+    for (let i = 0; i + minLen <= normalized.length; i += 1) {
+      const sub = normalized.slice(i, i + minLen);
+      if (source.includes(sub)) return true;
+    }
+    return false;
+  }
 
   for (const q of questions) {
     if (!q.question || q.question.length < 15) continue;
@@ -1483,8 +1667,18 @@ function verifyMCQAnswers(questions: any[], sourceText: string): MCQQuestion[] {
 
     const foundInSource = questionWords.filter((w: string) => lowerSource.includes(w)).length;
     const groundingRatio = foundInSource / Math.max(questionWords.length, 1);
-    if (groundingRatio < 0.3) {
-      console.log("[MCQ] Rejected (not grounded):", q.question.slice(0, 60));
+    // Require stronger grounding to reduce hallucinated/irrelevant questions
+    if (groundingRatio < 0.45) {
+      console.log("[MCQ] Rejected (not grounded):", q.question.slice(0, 60), "ratio:", groundingRatio.toFixed(2));
+      continue;
+    }
+
+    // Ensure the correct option or explanation has a substring match in the source text
+    const correctOption = (q.options && q.options[q.correct]) ? String(q.options[q.correct]) : "";
+    const explanation = String(q.explanation || "");
+    const hasMatch = hasSubstringMatch(correctOption, lowerSource, 12) || hasSubstringMatch(explanation, lowerSource, 16);
+    if (!hasMatch) {
+      console.log("[MCQ] Rejected (no source match for correct option/explanation):", q.question.slice(0, 60));
       continue;
     }
 
@@ -1513,6 +1707,102 @@ function verifyMCQAnswers(questions: any[], sourceText: string): MCQQuestion[] {
   return verified;
 }
 
+// export helper for unit tests
+export const _testable = {
+  verifyMCQAnswers,
+  isGenericMCQQuestion,
+  compactMCQText,
+};
+
+export async function generateKeyPointsForChapter(
+  chapterText: string,
+  bookTitle: string,
+  chapterTitle: string,
+  chapterNumber: number,
+): Promise<{
+  number: number;
+  title: string;
+  points: string[];
+  glossary: Array<{ term: string; definition: string }>;
+  takeaways: string[];
+  examTips: string[];
+  interviewTopics: string[];
+}> {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not set");
+  }
+
+  const model = new ChatGoogleGenerativeAI({
+    model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+    temperature: 0,
+    apiKey: process.env.GEMINI_API_KEY,
+    maxOutputTokens: 2000,
+  } as any);
+
+  const parser = new StringOutputParser();
+  const prompt = PromptTemplate.fromTemplate(`
+You are an expert academic assistant.
+Your job is to analyze the text of a single chapter from the book "{bookTitle}" and generate study materials.
+
+Chapter Title: "{chapterTitle}" (Chapter Number: {chapterNumber})
+
+TEXT TO USE:
+===START===
+{text}
+===END===
+
+Extract the following from the TEXT ABOVE ONLY:
+1. 3-5 key points/highlights of this chapter.
+2. 2-4 important glossary terms with their definitions from this chapter.
+3. 1-2 practical takeaways.
+4. 1-2 exam tips (specific facts/formulas likely to be tested).
+5. 1-2 interview topics (conceptual questions with answers/explanations).
+
+Return ONLY this JSON (no markdown, no extra text):
+{{
+  "points": [
+    "Key fact or concept from this chapter",
+    "Second important point"
+  ],
+  "glossary": [
+    {{
+      "term": "Technical term",
+      "definition": "Definition as used in this chapter"
+    }}
+  ],
+  "takeaways": [
+    "Practical insight from this chapter's content"
+  ],
+  "examTips": [
+    "Specific exam-critical item"
+  ],
+  "interviewTopics": [
+    "Technical concept or question asked in interviews"
+  ]
+}}
+`);
+
+  const chain = RunnableSequence.from([prompt, model, parser]);
+  const resultText = await chain.invoke({
+    bookTitle,
+    chapterTitle,
+    chapterNumber: chapterNumber.toString(),
+    text: chapterText.slice(0, 40000),
+  });
+
+  const parsed = parseJSON(String(resultText));
+
+  return {
+    number: chapterNumber,
+    title: chapterTitle,
+    points: Array.isArray(parsed.points) ? parsed.points : [],
+    glossary: Array.isArray(parsed.glossary) ? parsed.glossary : [],
+    takeaways: Array.isArray(parsed.takeaways) ? parsed.takeaways : [],
+    examTips: Array.isArray(parsed.examTips) ? parsed.examTips : [],
+    interviewTopics: Array.isArray(parsed.interviewTopics) ? parsed.interviewTopics : [],
+  };
+}
+
 export async function generateKeyPoints(
   pdfText: string,
   bookTitle: string,
@@ -1528,55 +1818,7 @@ export async function generateKeyPoints(
     genre,
     maxTokens: 2500,
     temperature: 0,
-    prompt: `Read this PDF content carefully and extract the most important learning material.
-
-Return this exact JSON:
-{
-  "chapters": [
-    {
-      "title": "Actual chapter name from the PDF",
-      "points": [
-        "Key fact or concept from this chapter",
-        "Second important point",
-        "Third key point"
-      ]
-    }
-  ],
-  "glossary": [
-    {
-      "term": "Technical term from the PDF",
-      "definition": "Definition as used in this PDF"
-    }
-  ],
-  "takeaways": [
-    "Practical insight from this book's actual content",
-    "Second takeaway",
-    "Third takeaway",
-    "Fourth takeaway",
-    "Fifth takeaway"
-  ],
-  "examTips": [
-    "Specific fact or formula from this PDF likely in exams",
-    "Second exam-critical item from PDF",
-    "Third exam topic",
-    "Fourth exam topic",
-    "Fifth exam topic"
-  ],
-  "interviewTopics": [
-    "Technical concept from this PDF asked in interviews",
-    "Second interview topic from this PDF",
-    "Third interview concept",
-    "Fourth interview topic",
-    "Fifth interview topic"
-  ]
-}
-
-Rules:
-- 4-6 chapters matching actual PDF structure
-- 8-12 glossary terms that appear in the PDF
-- examTips must be specific memorizable facts from the PDF
-- interviewTopics must be conceptual questions about actual content
-- ALL content must come from the PDF only`,
+    prompt: buildKeyPointsPrompt(),
   });
 
   if (!result.success || !result.text) {

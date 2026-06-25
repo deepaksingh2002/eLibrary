@@ -1,5 +1,5 @@
 "use client"
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useCallback } from "react"
 import { useAuthStore } from "../store/authStore"
 import { useGetAiStudyMcqQuery, useGetAiStudyKeyPointsQuery, useGetAiStudyStatusQuery, useGetAiStudyChapterIndexQuery } from "../store/services/api"
 
@@ -16,6 +16,7 @@ export interface MCQQuestion {
 
 export interface KeyPointsData {
   chapters: {
+    number?: number
     title: string
     points: string[]
   }[]
@@ -43,6 +44,7 @@ function normalizeKeyPointsData(data: Partial<KeyPointsData> | null | undefined)
   return {
     chapters: Array.isArray(data.chapters)
       ? data.chapters.map((chapter) => ({
+          number: typeof chapter?.number === "number" ? chapter.number : undefined,
           title: chapter?.title || "Section",
           points: Array.isArray(chapter?.points) ? chapter.points : [],
         }))
@@ -79,6 +81,8 @@ export function useAIStudy(bookId: string) {
   const [mcqNonce, setMcqNonce] = useState(0)
   const [selectedChapter, setSelectedChapter] = useState<string>("")
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const openPanel = useCallback(() => setIsOpen(true), [])
+  const closePanel = useCallback(() => setIsOpen(false), [])
 
   const chapterIndexQuery = useGetAiStudyChapterIndexQuery(bookId, {
     skip: !(isOpen && !!bookId && isAuthenticated),
@@ -129,8 +133,8 @@ export function useAIStudy(bookId: string) {
     setActiveTab,
     selectedChapter,
     setSelectedChapter,
-    openPanel: () => setIsOpen(true),
-    closePanel: () => setIsOpen(false),
+    openPanel,
+    closePanel,
     // expose manual refetch helpers for UI retry buttons
     refetch: {
       mcq: () => {
@@ -140,13 +144,19 @@ export function useAIStudy(bookId: string) {
       status: statusQuery.refetch,
     },
     chapterOptions: useMemo<ChapterOption[]>(() => {
-      const chapterIndexOptions = chapterIndexQuery.data?.chapterIndex?.chapters?.map((chapter) => ({
-        value: String(chapter.number),
-        label: `Chapter ${chapter.number}`,
-        number: chapter.number,
-        startPage: chapter.startPage,
-        endPage: chapter.endPage,
-      })) || []
+      const chapterIndexOptions = chapterIndexQuery.data?.chapterIndex?.chapters?.map((chapter) => {
+        let label = chapter.title || `Chapter ${chapter.number}`
+        if (chapter.title && !/^(chapter|chap|part|appendix)\b/i.test(chapter.title.trim())) {
+          label = `Chapter ${chapter.number}: ${chapter.title}`
+        }
+        return {
+          value: String(chapter.number),
+          label,
+          number: chapter.number,
+          startPage: chapter.startPage,
+          endPage: chapter.endPage,
+        }
+      }) || []
 
       if (chapterIndexOptions.length > 0) {
         return chapterIndexOptions

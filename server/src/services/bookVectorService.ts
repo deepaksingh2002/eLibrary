@@ -96,6 +96,39 @@ export async function ensureBookVectorIndex(
     return { success: true, pages: 0, chunks: existingCount }
   }
 
+  const currentBook = await Book.findById(book._id).select("extractionStatus pdfUrl title")
+  if (!force) {
+    if (currentBook?.extractionStatus === "processing") {
+      return {
+        success: false,
+        pages: 0,
+        chunks: 0,
+        error: "Book is currently being processed by a background worker. Please try again shortly.",
+      }
+    }
+
+    if (
+      currentBook?.extractionStatus === "pending" ||
+      currentBook?.extractionStatus === "failed" ||
+      currentBook?.extractionStatus === "no_pdf"
+    ) {
+      console.log(`[bookVectorService] Scheduling background indexing for book: ${book.title}`)
+      const { scheduleBookAiProcessing } = require("./bookAiProcessing")
+      scheduleBookAiProcessing({
+        bookId: String(book._id),
+        pdfUrl: book.pdfUrl || currentBook.pdfUrl || "",
+        title: book.title || currentBook.title || "Unknown Book",
+      })
+
+      return {
+        success: false,
+        pages: 0,
+        chunks: 0,
+        error: "Book indexing has been triggered. Please wait a few minutes for AI study features to become available.",
+      }
+    }
+  }
+
   await Book.findByIdAndUpdate(book._id, {
     extractionStatus: "processing",
     extractionError: "",
