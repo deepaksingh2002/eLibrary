@@ -6,6 +6,7 @@ import { Types } from "mongoose";
 
 const connection = redisConfigFromEnv();
 export const aiQueue = connection ? new Queue("ai-jobs", { connection }) : null;
+export const CACHE_VERSION = process.env.AI_CACHE_VERSION || "v1";
 
 type AIJobType = "summary" | "mcq" | "keypoints";
 
@@ -14,15 +15,19 @@ async function persistAIResult(
   type: AIJobType,
   data: unknown,
 ) {
+  const update: { $set: Record<string, unknown>; $unset?: Record<string, number> } = {
+    $set: {
+      data,
+      createdAt: new Date(),
+      ...(process.env.AI_CACHE_TTL_HOURS
+        ? { expiresAt: new Date(Date.now() + Number(process.env.AI_CACHE_TTL_HOURS) * 60 * 60 * 1000) }
+        : {}),
+    },
+  }
+  if (!process.env.AI_CACHE_TTL_HOURS) update.$unset = { expiresAt: 1 }
   await AIStudyCache.findOneAndUpdate(
     ({ bookId: new Types.ObjectId(bookId), type } as any),
-    {
-      $set: {
-        data,
-        createdAt: new Date(),
-        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
-      },
-    },
+    update,
     { upsert: true },
   );
 }
@@ -51,12 +56,21 @@ async function runAIJob(bookId: string, type: AIJobType, opts: any = {}) {
 
 export async function enqueueAIJob(bookId: string, type: string, opts: any = {}) {
   if (!aiQueue) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("AI queue is unavailable because Redis is not configured")
+    }
     await runAIJob(bookId, type as AIJobType, opts);
     return `inline-${type}-${Date.now()}`;
   }
 
   const name = type;
-  const job = await aiQueue.add(name, { bookId, opts });
+  const job = await aiQueue.add(name, { bookId, opts }, {
+    jobId: `${bookId}:${type}:${CACHE_VERSION}`,
+    attempts: 3,
+    backoff: { type: "exponential", delay: 1000 },
+    removeOnComplete: { age: 24 * 60 * 60, count: 1000 },
+    removeOnFail: { age: 7 * 24 * 60 * 60, count: 1000 },
+  });
   return job.id;
 }
 
@@ -79,7 +93,10 @@ export function initAIWorker() {
         throw err;
       }
     },
-    { connection },
+    {
+      connection,
+      concurrency: Math.max(1, Number(process.env.AI_WORKER_CONCURRENCY || 2)),
+    },
   );
 
   worker.on("completed", (job: Job) => {

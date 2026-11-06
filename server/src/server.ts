@@ -8,8 +8,6 @@ import { Server } from "http";
 import mongoose from "mongoose";
 import app from "./app";
 import { connectDB } from "./config/db";
-import { startRecommendationCron } from "./jobs/recommendationCron";
-import { initAIWorker } from "./services/aiQueue";
 import { validateAIConfig } from "./config/aiConfig";
 
 const PORT = Number(process.env.PORT || 5000);
@@ -32,13 +30,13 @@ const startServer = async () => {
     );
   });
 
-  startRecommendationCron();
-  // Initialize the AI worker when Redis is available; otherwise jobs run inline.
-  try {
-    initAIWorker();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn("[Server] Could not initialize AI worker:", message);
+  const runWorkerInApi = process.env.RUN_WORKER_IN_API === "true"
+    || (process.env.RUN_WORKER_IN_API === undefined && process.env.NODE_ENV !== "production")
+  if (runWorkerInApi) {
+    const { startRecommendationCron } = await import("./jobs/recommendationCron")
+    const { initAIWorker } = await import("./services/aiQueue")
+    startRecommendationCron()
+    initAIWorker()
   }
 
   async function shutdown(signal: string) {

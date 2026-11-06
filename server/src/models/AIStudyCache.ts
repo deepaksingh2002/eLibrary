@@ -4,8 +4,9 @@ export interface IAIStudyCache extends Document {
   bookId: mongoose.Types.ObjectId
   type: "summary" | "mcq" | "keypoints"
   data: any
+  cacheVersion?: string
   createdAt: Date
-  expiresAt: Date
+  expiresAt?: Date
 }
 
 const AIStudyCacheSchema = new Schema<IAIStudyCache>({
@@ -20,11 +21,9 @@ const AIStudyCacheSchema = new Schema<IAIStudyCache>({
     required: true,
   },
   data: { type: Schema.Types.Mixed, required: true },
+  cacheVersion: { type: String, default: "v1" },
   createdAt: { type: Date, default: Date.now },
-  expiresAt: {
-    type: Date,
-    default: () => new Date(Date.now() + 48 * 60 * 60 * 1000),
-  },
+  expiresAt: { type: Date },
 })
 
 AIStudyCacheSchema.index({ bookId: 1, type: 1 }, { unique: true })

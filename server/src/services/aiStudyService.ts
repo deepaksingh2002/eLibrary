@@ -75,6 +75,10 @@ export interface BookForAI {
   extractionStatus?: string
 }
 
+export class AIStudyGenerationError extends Error {
+  readonly code = "AI_GENERATION_FAILED"
+}
+
 const FALLBACK_SUMMARY: BookSummary = {
   overview: "This book's PDF could not be indexed yet. Please try again after the PDF vector index finishes building.",
   keyThemes: ["Vector indexing pending"],
@@ -243,10 +247,7 @@ export async function generateBookSummary(book: BookForAI): Promise<BookSummary>
     const context = await getContext(book, "summary", 10)
     if (!context.success || !context.text) {
       console.error("[AIStudy] Summary vector context failed:", context.error)
-      return {
-        ...FALLBACK_SUMMARY,
-        overview: context.error || FALLBACK_SUMMARY.overview,
-      }
+      throw new AIStudyGenerationError(context.error || "Summary context is unavailable")
     }
 
     return generateSummaryFromContext(
@@ -257,7 +258,7 @@ export async function generateBookSummary(book: BookForAI): Promise<BookSummary>
     )
   } catch (error: any) {
     console.error("[AIStudy] Summary generation failed:", error?.message || error)
-    return FALLBACK_SUMMARY
+    throw new AIStudyGenerationError(error instanceof Error ? error.message : String(error))
   }
 }
 
@@ -315,7 +316,7 @@ export async function generateMCQQuestions(
     const context = await buildStudyContext(resolved, "mcq", Math.max(10, count), chapterFocus)
     if (!context.success || !context.text) {
       console.error("[AIStudy] MCQ vector context failed:", context.error)
-      return { questions: [], fallbackUsed: false }
+      throw new AIStudyGenerationError(context.error || "MCQ context is unavailable")
     }
 
     return generateMCQFromContext(
@@ -326,7 +327,7 @@ export async function generateMCQQuestions(
     )
   } catch (error: any) {
     console.error("[AIStudy] MCQ generation failed:", error?.message || error)
-    return { questions: [], fallbackUsed: false }
+    throw new AIStudyGenerationError(error instanceof Error ? error.message : String(error))
   }
 }
 
@@ -353,14 +354,7 @@ export async function generateKeyPoints(book: BookForAI, chapterFocus?: string):
       }
 
       if (chaptersToProcess.length === 0) {
-        return {
-          chapters: [],
-          glossary: [],
-          takeaways: [],
-          examTips: [],
-          interviewTopics: [],
-          basedOnPDF: true,
-        }
+        throw new AIStudyGenerationError("No chapter content was available")
       }
 
       // Generate key points for the selected chapters
@@ -388,14 +382,7 @@ export async function generateKeyPoints(book: BookForAI, chapterFocus?: string):
 
       const validResults = results.filter(Boolean)
       if (validResults.length === 0) {
-        return {
-          chapters: [],
-          glossary: [],
-          takeaways: [],
-          examTips: [],
-          interviewTopics: [],
-          basedOnPDF: true,
-        }
+        throw new AIStudyGenerationError("Key point generation returned no results")
       }
 
       // Merge results!
@@ -439,10 +426,7 @@ export async function generateKeyPoints(book: BookForAI, chapterFocus?: string):
     const context = await getContext(book, "keypoints", 12)
     if (!context.success || !context.text) {
       console.error("[AIStudy] Key points vector context failed:", context.error)
-      return {
-        ...FALLBACK_KEY_POINTS,
-        chapters: [{ title: "Unavailable", points: [context.error || "Try again later"] }],
-      }
+      throw new AIStudyGenerationError(context.error || "Key point context is unavailable")
     }
 
     const keyPoints = await generateKeyPointsFromContext(
@@ -462,6 +446,6 @@ export async function generateKeyPoints(book: BookForAI, chapterFocus?: string):
     }
   } catch (error: any) {
     console.error("[AIStudy] Key points generation failed:", error?.message || error)
-    return FALLBACK_KEY_POINTS
+    throw new AIStudyGenerationError(error instanceof Error ? error.message : String(error))
   }
 }

@@ -2,6 +2,7 @@ import { cosineSimilarity } from "../embeddings/embeddingService"
 import { normalizeWhitespace } from "../utils/textCleanup"
 
 export interface StoredVectorChunk {
+  bookId?: string
   chunkIndex: number
   content: string
   embedding: number[]
@@ -35,9 +36,14 @@ export function mmrSelectChunks(params: {
   queryVectors: number[][]
   limit: number
   lambda?: number
+  bookId?: string
+  chapter?: string
 }): RetrievedChunk[] {
   const lambda = params.lambda ?? 0.72
-  const candidates = params.chunks.map((chunk) => ({
+  const candidates = params.chunks
+    .filter((chunk) => !params.bookId || chunk.bookId === params.bookId)
+    .filter((chunk) => !params.chapter || (chunk.chapter && isChapterMatch(chunk.chapter, params.chapter)))
+    .map((chunk) => ({
     ...chunk,
     score: Math.max(...params.queryVectors.map((queryVector) => cosineSimilarity(chunk.embedding || [], queryVector))),
   }))

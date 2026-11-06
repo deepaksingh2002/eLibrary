@@ -17,6 +17,7 @@ import adminRouter from "./routes/admin.routes";
 import smartImportRouter from "./routes/smartImport.routes";
 import aiStudyRouter from "./routes/aiStudy.routes";
 import { ApiError } from "./utils/ApiError";
+import flashcardRouter from "./modules/flashcards/route";
 
 const app = express();
 
@@ -121,6 +122,7 @@ app.use("/api/recommendations", recommendationRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/admin/smart-import", smartImportRouter);
 app.use("/api/ai-study", aiStudyRouter);
+app.use("/api/flashcards", flashcardRouter);
 
 const healthHandler = (req: express.Request, res: express.Response) => {
   res.status(200).json({

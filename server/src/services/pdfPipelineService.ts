@@ -2,20 +2,20 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 import axios from "axios"
-import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf"
-import { cleanupOcrText, removeRepeatedPageLines } from "../utils/textCleanup"
 import {
   chapterForPage as resolveChapterForPage,
   detectChaptersFromPages as detectSemanticChaptersFromPages,
 } from "../rag/chapterDetection"
 import { buildChapterAwareChunks as buildSemanticChapterAwareChunks } from "../rag/chunkingService"
-import { ocrPdfPages } from "../ocr/ocrService"
+import { getPdfPageCount, ocrPdfPages } from "../ocr/ocrService"
 
 export interface PdfPageRecord {
   pageNumber: number
   text: string
   chapter: string
   bookName: string
+  source: "text" | "ocr"
+  quality: number
 }
 
 export interface PdfChapterRange {
@@ -30,8 +30,10 @@ export interface PdfProcessingResult {
   chapters: PdfChapterRange[]
   totalPages: number
   text: string
-  source: "text" | "ocr"
+  source: "text" | "ocr" | "mixed"
   usedOcr: boolean
+  ocrFailedPages: number[]
+  warnings: string[]
   error?: string
 }
 
@@ -43,39 +45,24 @@ export interface ChapterAwareChunk {
   bookName: string
 }
 
-const OCR_DPI = Number(process.env.PDF_OCR_DPI || 220)
+const OCR_DPI = Number(process.env.PDF_OCR_DPI || 250)
 const OCR_LANGUAGE = process.env.PDF_OCR_LANG || "eng"
 const MIN_TEXT_WORDS = Number(process.env.PDF_TEXT_MIN_WORDS || 120)
 const MIN_PAGE_WORDS = Number(process.env.PDF_TEXT_MIN_PAGE_WORDS || 18)
-const BANNED_TERMS = ["meap", "manning", "copyright", "isbn", "publisher", "table of contents"]
 
 function normalizeWhitespace(text: string): string {
   return text.replace(/\s+/g, " ").trim()
 }
 
-function isNoiseLine(line: string): boolean {
-  const lowered = line.toLowerCase()
-
-  return (
-    !line ||
-    /^page\s*\d+$/i.test(line) ||
-    /^\d+$/i.test(line) ||
-    /https?:\/\//i.test(line) ||
-    /\bisbn\b/i.test(line) ||
-    /\bcopyright\b/i.test(line) ||
-    /\bmanning\b/i.test(line) ||
-    /\bmeap\b/i.test(line) ||
-    /publisher\s+notes?/i.test(line) ||
-    /table of contents/i.test(line) ||
-    lowered.includes("all rights reserved")
-  )
-}
-
 function cleanupExtractedText(text: string): string {
-  return cleanupOcrText(text)
+  return text
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
 }
 
-function removeRepeatedLinesAcrossPages(pages: Array<{ pageNumber: number; text: string }>): Array<{ pageNumber: number; text: string }> {
+function removeRepeatedLinesAcrossPages<T extends { pageNumber: number; text: string }>(pages: T[]): T[] {
   const lineCounts = new Map<string, number>()
 
   for (const page of pages) {
@@ -110,20 +97,22 @@ function removeRepeatedLinesAcrossPages(pages: Array<{ pageNumber: number; text:
     return {
       ...page,
       text: cleanedLines.join("\n").trim(),
-    }
+    } as T
   })
 }
 
 function cleanChunkText(text: string): string {
+  const configuredTerms = (process.env.PDF_STRIP_TERMS || "")
+    .split(",")
+    .map((term) => term.trim())
+    .filter(Boolean)
+  const stripped = configuredTerms.length > 0
+    ? new RegExp(`\\b(?:${configuredTerms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "gi")
+    : null
   return cleanupExtractedText(text)
-    .replace(/\b(MEAP|Manning|copyright|isbn|publisher notes?)\b/gi, " ")
+    .replace(stripped || /$^/, " ")
     .replace(/\s{2,}/g, " ")
     .trim()
-}
-
-function hasBannedTerms(text: string): boolean {
-  const lowered = text.toLowerCase()
-  return BANNED_TERMS.some((term) => lowered.includes(term))
 }
 
 async function downloadPdfToTempFile(pdfUrl: string, bookName: string): Promise<{ tmpPath: string | null; buffer: Buffer | null }> {
@@ -218,40 +207,32 @@ function chapterForPage(pageNumber: number, chapters: PdfChapterRange[]): string
   return match?.chapter || "Uncategorized"
 }
 
-async function extractTextPages(tmpPath: string, bookName: string): Promise<{ pages: Array<{ pageNumber: number; text: string }>; totalPages: number }> {
-  const loader = new PDFLoader(tmpPath, { splitPages: true })
-  const docs = await loader.load()
-
-  if (!docs || docs.length === 0) {
-    return { pages: [], totalPages: 0 }
-  }
-
-  const pages = docs
-    .map((doc, index) => {
-      const metadata = doc.metadata as any
-      const pageNumber = metadata?.loc?.pageNumber || metadata?.pageNumber || metadata?.page || index + 1
-
-      return {
-        pageNumber: Number.isFinite(Number(pageNumber)) ? Number(pageNumber) : index + 1,
-        text: cleanupExtractedText(doc.pageContent || ""),
+async function extractTextPages(pdfBuffer: Buffer): Promise<{ pages: Array<{ pageNumber: number; text: string; source: "text"; quality: number }>; totalPages: number }> {
+  const mupdf = await new Function("return import('mupdf')")() as typeof import("mupdf")
+  const document = mupdf.Document.openDocument(pdfBuffer, "application/pdf")
+  try {
+    const totalPages = document.countPages()
+    const pages = Array.from({ length: totalPages }, (_, index) => {
+      const page = document.loadPage(index)
+      try {
+        const text = cleanupExtractedText(page.toStructuredText({}).asText())
+        const words = text.split(/\s+/).filter(Boolean).length
+        const printable = text.replace(/[^\x20-\x7e\n\r\t]/g, "").length
+        const quality = text.length > 0 ? printable / text.length : 0
+        return { pageNumber: index + 1, text, source: "text" as const, quality: Math.min(1, quality * Math.min(1, words / MIN_PAGE_WORDS)) }
+      } finally {
+        page.destroy()
       }
     })
-    .filter((page) => page.text.length > 0)
-
-  const metadata = docs[0]?.metadata as any
-  const totalPages = metadata?.pdf?.totalPages || pages.length
-
-  return { pages, totalPages }
+    return { pages, totalPages }
+  } finally {
+    document.destroy()
+  }
 }
 
-function shouldUseOcr(pages: Array<{ pageNumber: number; text: string }>): boolean {
-  const words = pages
-    .map((page) => page.text.split(/\s+/).filter((word) => word.length > 2).length)
-    .reduce((sum, count) => sum + count, 0)
-
-  const averageWordsPerPage = pages.length > 0 ? words / pages.length : 0
-
-  return words < MIN_TEXT_WORDS || averageWordsPerPage < MIN_PAGE_WORDS
+function shouldUseOcr(page: { text: string; quality: number }): boolean {
+  const words = page.text.split(/\s+/).filter((word) => word.length > 2).length
+  return words < MIN_PAGE_WORDS || page.quality < 0.65
 }
 
 export async function processBookPdf(pdfUrl: string, bookName: string): Promise<PdfProcessingResult> {
@@ -266,29 +247,33 @@ export async function processBookPdf(pdfUrl: string, bookName: string): Promise<
       text: "",
       source: "text",
       usedOcr: false,
+      ocrFailedPages: [],
+      warnings: [],
       error: "Could not download PDF. Check if the PDF URL is accessible.",
     }
   }
 
   try {
-    const textExtraction = await extractTextPages(tmpPath, bookName)
+    const textExtraction = await extractTextPages(buffer)
     const textPages = textExtraction.pages
-    const totalPages = textExtraction.totalPages
+    const totalPages = await getPdfPageCount(buffer)
+    const pagesNeedingOcr = textPages.filter(shouldUseOcr).map((page) => page.pageNumber)
+    const ocrPages = pagesNeedingOcr.length > 0
+      ? await ocrPdfPages(buffer, totalPages, { dpi: OCR_DPI, language: OCR_LANGUAGE, pageNumbers: pagesNeedingOcr })
+      : Object.assign([], { failedPages: [], warnings: [] })
+    const ocrByPage = new Map(ocrPages.map((page) => [page.pageNumber, page]))
+    const pages = textPages.map((page) => {
+      const selected = ocrByPage.get(page.pageNumber) || page
+      return { ...selected, text: cleanChunkText(selected.text) }
+    })
+    const source: "text" | "ocr" | "mixed" = pages.every((page) => page.source === "ocr")
+      ? "ocr"
+      : pages.some((page) => page.source === "ocr")
+        ? "mixed"
+        : "text"
+    const usedOcr = ocrPages.length > 0 || pagesNeedingOcr.length > 0
 
-    let pages = textPages
-    let source: "text" | "ocr" = "text"
-    let usedOcr = false
-
-    if (textPages.length === 0 || shouldUseOcr(textPages)) {
-      pages = await ocrPdfPages(buffer, totalPages, {
-        dpi: OCR_DPI,
-        language: OCR_LANGUAGE,
-      })
-      source = "ocr"
-      usedOcr = true
-    }
-
-    const cleanedRepeatedPages = removeRepeatedPageLines(pages)
+    const cleanedRepeatedPages = removeRepeatedLinesAcrossPages(pages)
     const chapters = detectSemanticChaptersFromPages(cleanedRepeatedPages)
     const chapterAwarePages = cleanedRepeatedPages.map((page) => ({
       ...page,
@@ -315,6 +300,8 @@ export async function processBookPdf(pdfUrl: string, bookName: string): Promise<
         text: "",
         source,
         usedOcr,
+        ocrFailedPages: ocrPages.failedPages,
+        warnings: ocrPages.warnings,
         error: "No readable text could be extracted from the PDF",
       }
     }
@@ -327,6 +314,8 @@ export async function processBookPdf(pdfUrl: string, bookName: string): Promise<
       text,
       source,
       usedOcr,
+      ocrFailedPages: ocrPages.failedPages,
+      warnings: ocrPages.warnings,
     }
   } catch (error) {
     return {
@@ -337,6 +326,8 @@ export async function processBookPdf(pdfUrl: string, bookName: string): Promise<
       text: "",
       source: "text",
       usedOcr: false,
+      ocrFailedPages: [],
+      warnings: [],
       error: error instanceof Error ? error.message : String(error),
     }
   } finally {

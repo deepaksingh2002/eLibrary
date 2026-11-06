@@ -12,6 +12,7 @@ import {
   generateKeyPoints,
   getBookChapterIndex,
 } from "../services/aiStudyService"
+import { CACHE_VERSION } from "../services/aiQueue"
 
 const router = Router()
 router.use(protect)
@@ -27,7 +28,6 @@ async function getCached(
   const cached = await AIStudyCache.findOne({
     bookId: new Types.ObjectId(bookId),
     type,
-    expiresAt: { $gt: new Date() },
   }).lean()
 
   if (!cached) {
@@ -66,7 +66,10 @@ async function saveCache(
     $set: {
       data,
       createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+      cacheVersion: CACHE_VERSION,
+      ...(process.env.AI_CACHE_TTL_HOURS
+        ? { expiresAt: new Date(Date.now() + Number(process.env.AI_CACHE_TTL_HOURS) * 60 * 60 * 1000) }
+        : {}),
     },
   }
 
